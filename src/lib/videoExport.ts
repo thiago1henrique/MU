@@ -156,11 +156,12 @@ export async function exportCardVideo(
   const tracks = [...canvasStream.getVideoTracks()]
   const cv = video as CaptureVideo
   const grab = cv.captureStream?.bind(cv)
+  let hasAudio = false
   if (grab) {
     try {
-      grab()
-        .getAudioTracks()
-        .forEach((t) => tracks.push(t))
+      const audioTracks = grab().getAudioTracks()
+      audioTracks.forEach((t) => tracks.push(t))
+      hasAudio = audioTracks.length > 0
     } catch {
       /* no audio track — export silently */
     }
@@ -299,6 +300,12 @@ export async function exportCardVideo(
   // (`-r`/`-fps_mode cfr`) is what makes the downloaded file play smoothly
   // everywhere. If ffmpeg fails, fall back to the raw recording so the export
   // still produces a usable file.
+  //
+  // WhatsApp is fussy about MP4s: it refuses to preview/play files with no
+  // audio stream (they open as a "document") and older Android decoders choke
+  // on H.264 High profile. So we force main profile + level 4.0 and always
+  // guarantee an audio track — the clip's real audio when it has one, a silent
+  // track (`anullsrc`) otherwise.
   const inName = `in.${recordedExt}`
   try {
     onStatus?.('Convertendo para MP4…')
@@ -307,6 +314,15 @@ export async function exportCardVideo(
     await ff.exec([
       '-i',
       inName,
+      // Silent audio fallback so the output always has a stream WhatsApp can read.
+      ...(hasAudio ? [] : ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo']),
+      // Map the video, plus the clip's audio (0:a) or the silent input (1:a).
+      '-map',
+      '0:v:0',
+      '-map',
+      hasAudio ? '0:a:0' : '1:a:0',
+      // With the silent input we need -shortest so it doesn't run forever.
+      ...(hasAudio ? [] : ['-shortest']),
       // Force constant frame rate — the whole point of the transcode.
       '-r',
       String(FPS),
@@ -314,6 +330,11 @@ export async function exportCardVideo(
       'cfr',
       '-c:v',
       'libx264',
+      // Broad decoder compatibility (WhatsApp, older Android).
+      '-profile:v',
+      'main',
+      '-level',
+      '4.0',
       '-pix_fmt',
       'yuv420p',
       '-preset',

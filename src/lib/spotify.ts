@@ -225,6 +225,13 @@ async function api<T>(path: string): Promise<T> {
     logout()
     throw new SpotifyError('Sessão do Spotify expirou. Conecte novamente.')
   }
+  if (res.status === 403) {
+    // App em Development Mode: o Spotify só libera a API para a conta dona e as
+    // contas adicionadas na allowlist (User Management). Qualquer outra recebe 403.
+    throw new SpotifyError(
+      'Este app do Spotify ainda está em modo de desenvolvimento e só libera contas autorizadas. Peça acesso ao responsável ou tente novamente mais tarde.',
+    )
+  }
   if (!res.ok) throw new SpotifyError(`Spotify respondeu ${res.status}.`)
   return (await res.json()) as T
 }

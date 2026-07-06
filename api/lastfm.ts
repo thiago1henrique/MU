@@ -1,3 +1,10 @@
+// Pull in Node's globals (process, etc.) for this file explicitly. The project
+// tsconfig sets `types: ["vite/client"]`, which excludes them, and Vercel
+// type-checks /api against it — without this, `process` is untyped (TS2591). A
+// reference directive bypasses the `types` filter and is a no-op where Node
+// types are already present, so it's conflict-free in both environments.
+/// <reference types="node" />
+
 // Minimal shapes for the bits of the Vercel Node req/res this function uses, so
 // it needs no @vercel/node dependency. That package pulls an old esbuild whose
 // postinstall build script pnpm blocks, which fails the Vercel install step.
