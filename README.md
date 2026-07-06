@@ -1,77 +1,95 @@
-# Recap musical
+# Echo
 
-Gera um resumo de escuta a partir do **Last.fm** ou do **Spotify** e exporta PNGs
-prontos para **story do Instagram** (1080×1920) e **feed do Twitter** (1600×900).
+Echo gera um retrato do que você andou ouvindo e o exporta como imagem ou vídeo,
+pronto para publicar. A partir do seu histórico no **Last.fm**, ele monta um card
+com seus artistas e músicas mais ouvidos e produz arquivos nos formatos de
+**story** (1080×1920) e **feed** (1600×900).
 
-Feito porque o Apple Music não tem recap mensal — mas o Last.fm scrobbla tudo.
+Nasceu de uma limitação simples: o Apple Music não oferece um resumo mensal de
+escuta — mas o Last.fm registra tudo via scrobble.
 
-## O que mostra
+## Recursos
 
-- **Topo:** artista mais ouvido (com foto real do artista).
-- **Colunas:** top 5 artistas (esq.) e top 5 músicas (dir.).
-- **Rodapé:** minutos ouvidos (estimados) — só no Last.fm; veja as notas abaixo.
-- **Fonte:** seletor Last.fm / Spotify.
-- **Período:** Semana / Mês / Ano / Sempre (Last.fm); 4 semanas / 6 meses / 1 ano (Spotify).
-- **Exportar:** botões para baixar o PNG em cada formato.
+- **Recap de escuta** — artista em destaque, top 5 artistas e top 5 músicas do
+  período escolhido.
+- **Versos em destaque** — busca a letra da faixa e permite marcar trechos para
+  imprimir no card.
+- **Vídeo no topo** — opção de usar um clipe curto como fundo, exportando o
+  resultado em MP4.
+- **Exportação pronta para publicar** — download em PNG (story e feed) ou MP4.
+- **Períodos** — Semana, Mês, Ano ou Todo o período.
 
-## Rodando
+## Como rodar
+
+Pré-requisitos: Node.js e [pnpm](https://pnpm.io/).
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-### Last.fm (API key)
+O app sobe em `http://localhost:5173`.
 
-Crie uma chave em <https://www.last.fm/api/account/create>.
+### Chave do Last.fm
 
-A chave fica **só no servidor**: as chamadas passam por uma função serverless
-(`api/lastfm.ts`) que injeta a chave, então ela **nunca vai para o bundle do
-navegador**. Configure-a como `LASTFM_API_KEY` (sem prefixo `VITE_`):
+O Echo consome a API do Last.fm, que exige uma chave. Crie a sua em
+<https://www.last.fm/api/account/create>.
+
+Por segurança, a chave **nunca é enviada ao navegador**: as requisições passam
+por uma função serverless (`api/lastfm.ts`) que injeta a chave no lado do
+servidor. Configure-a na variável de ambiente `LASTFM_API_KEY`.
 
 - **Local:** copie `.env.example` para `.env` e preencha `LASTFM_API_KEY`. Como a
-  função `/api/*` só roda no runtime da Vercel, use **`vercel dev`** para testar
+  rota `/api/*` só roda no runtime da Vercel, use **`vercel dev`** para exercitar
   o Last.fm localmente (o `pnpm dev` puro não serve `/api`).
 - **Produção (Vercel):** cadastre `LASTFM_API_KEY` em
   *Project Settings → Environment Variables*.
 
-> ⚠️ Variáveis com prefixo `VITE_` são **embutidas no bundle público** — não são
-> segredo. Por isso a chave do Last.fm usa `LASTFM_API_KEY` (servidor), enquanto
-> o Client ID do Spotify (público por design) usa `VITE_SPOTIFY_CLIENT_ID`.
+> Nota de segurança: variáveis com prefixo `VITE_` são embutidas no bundle
+> público e **não devem guardar segredos**. Por isso a chave do Last.fm usa
+> `LASTFM_API_KEY` (somente servidor), e não uma variável `VITE_`.
 
-Depois é só informar o **usuário** do Last.fm e gerar.
+Com a chave configurada, basta informar o **usuário** do Last.fm e gerar o recap.
 
-### Spotify (login OAuth)
+## Notas técnicas
 
-1. Crie um app em <https://developer.spotify.com/dashboard>.
-2. Em **Redirect URIs**, cadastre a URL onde o site roda — ex.:
-   `http://localhost:5173/` em dev, ou a URL publicada.
-3. Copie o **Client ID** para `VITE_SPOTIFY_CLIENT_ID` (ou cole na UI).
-4. Clique em **Conectar Spotify** e autorize. O login usa o fluxo
-   Authorization Code + **PKCE**, 100% no navegador (sem client secret / backend).
+Algumas escolhas de implementação decorrem de limitações das APIs envolvidas:
 
-## Notas técnicas (limitações das APIs)
-
-- **Foto do artista (Last.fm):** o Last.fm descontinuou as imagens de artista
-  (só devolve um placeholder). As fotos vêm do **Deezer** (via JSONP, sem backend).
-  No Spotify as imagens já vêm da própria API.
-- **Minutos e nº de plays:** o Last.fm não expõe tempo real de escuta — os
-  minutos são uma **estimativa** (nº de scrobbles no período × duração média das
-  faixas). O **Spotify não expõe nem play count nem minutos** pela API pública
-  (só listas rankeadas), então no modo Spotify esses números não aparecem.
-- **Períodos do Spotify:** só há três janelas fixas — `short_term` (~4 semanas),
-  `medium_term` (~6 meses) e `long_term` (~1 ano). Não existe visão semanal.
-- **Export PNG:** as imagens passam pelo proxy `images.weserv.nl` para serem
-  servidas com CORS, evitando o "canvas tainted" na hora de gerar o PNG.
+- **Foto do artista:** o Last.fm descontinuou as imagens de artista (retorna
+  apenas um placeholder). As fotos são obtidas do **Deezer**, sem backend
+  adicional.
+- **Minutos ouvidos:** o Last.fm não expõe o tempo real de escuta. Os minutos são
+  uma **estimativa** (nº de scrobbles no período × duração média das faixas) e
+  aparecem marcados como tal.
+- **Letras:** as letras vêm do [lrclib.net](https://lrclib.net) (aberto, sem
+  chave). Quando não há letra disponível, o verso pode ser digitado manualmente.
+- **Exportação em imagem:** as fotos remotas passam por um proxy de imagens para
+  serem servidas com CORS, evitando o erro de *canvas tainted* na geração do PNG.
+- **Exportação em vídeo:** o MP4 é gerado no navegador. O Firefox não suporta a
+  gravação em MP4, então nele a exportação de vídeo fica indisponível (o PNG
+  continua funcionando).
 
 ## Estrutura
 
-- `api/lastfm.ts` — proxy serverless que injeta a `LASTFM_API_KEY` (server-side).
-- `src/lib/lastfm.ts` — cliente (chama `/api/lastfm`) + montagem do recap.
-- `src/lib/spotify.ts` — auth OAuth (PKCE) + montagem do recap do Spotify.
-- `src/lib/images.ts` — foto do artista (Deezer) e proxy de imagens.
-- `src/lib/exportPng.ts` — export com `html-to-image`.
-- `src/components/RecapCard.tsx` — o card compartilhável (variantes story/feed).
-- `src/App.tsx` — UI (fonte, usuário/login, período, exportação, preview).
+```
+api/
+  lastfm.ts              Proxy serverless que injeta a chave do Last.fm
+src/
+  App.tsx                Interface (usuário, período, exportação, preview)
+  components/
+    RecapCard.tsx        Card compartilhável (variantes story e feed)
+  lib/
+    lastfm.ts            Cliente do Last.fm e montagem do recap
+    lyrics.ts            Busca de letras (lrclib.net)
+    images.ts            Foto do artista (Deezer) e proxy de imagens
+    exportPng.ts         Exportação em PNG
+    videoExport.ts       Exportação em MP4
+```
 
-O visual é intencionalmente neutro — a identidade visual será refinada depois.
+## Tecnologias
+
+React 19, TypeScript, Vite e funções serverless na Vercel.
+
+---
+
+Desenvolvido por [Mangue House](https://manguehouse.com/).

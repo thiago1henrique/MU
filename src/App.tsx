@@ -356,6 +356,7 @@ export default function App() {
   }
 
   return (
+    <>
     <div className="app" data-source={source}>
       <header className="masthead">
         <span className="masthead__cat">Ecoe para todos</span>
@@ -797,5 +798,18 @@ export default function App() {
         </p>
       )}
     </div>
+
+    <footer className="site-footer">
+      <a
+        className="site-footer__credit"
+        href="https://manguehouse.com/"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <span className="site-footer__logo" aria-hidden />
+        Desenvolvido por Mangue House
+      </a>
+    </footer>
+    </>
   )
 }

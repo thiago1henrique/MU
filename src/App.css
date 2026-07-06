@@ -860,3 +860,38 @@
   opacity: 0.75;
   line-height: 1.7;
 }
+
+/* ---- Mangue House credit strip ---- */
+/* A subtle full-bleed band sitting below the centered column. The band stays
+   #f5f5f5 per spec; the Mangue House mark ships as a solid white SVG, so we
+   render it through a CSS mask and tint it with the link color — otherwise it
+   would vanish on the near-white strip. */
+.site-footer {
+  display: flex;
+  justify-content: center;
+  padding: 14px 20px;
+  background: #f5f5f5;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.site-footer__credit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #6f665b;
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+.site-footer__credit:hover {
+  opacity: 1;
+}
+.site-footer__logo {
+  width: 26px;
+  height: 17px;
+  background-color: currentColor;
+  -webkit-mask: url(/mangue-house.svg) center / contain no-repeat;
+  mask: url(/mangue-house.svg) center / contain no-repeat;
+}

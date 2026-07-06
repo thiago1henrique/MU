@@ -12,3 +12,12 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// Registra o service worker (PWA). Só em produção — em dev o SW atrapalha o HMR.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Falha no registro não deve quebrar o app; segue como web normal.
+    })
+  })
+}

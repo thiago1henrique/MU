@@ -9,11 +9,13 @@
 // body sits over the background.
 //
 // Two encoders:
-//   • WebCodecs (Chromium/Safari): hardware H.264 via VideoEncoder + AAC via
-//     AudioEncoder, muxed to MP4 with mp4-muxer. Frames are pulled from the
-//     decoded clip and encoded as fast as the hardware allows — no realtime
-//     MediaRecorder pass and no ffmpeg transcode. This is the fast path.
-//   • Legacy fallback (older Firefox): MediaRecorder + ffmpeg.wasm transcode.
+//   • WebCodecs (Chromium): the clip plays once in real time while we composite
+//     each frame and feed it to a hardware H.264 VideoEncoder; its audio is
+//     tapped through the WebAudio graph into an AAC AudioEncoder. Both streams
+//     mux straight to MP4 with mp4-muxer — no ffmpeg transcode (that transcode,
+//     single-threaded WASM, was the slow "Convertendo…" step). This is the fast
+//     path: capture ≈ clip length, then an instant mux.
+//   • Legacy fallback (Safari/older Firefox): MediaRecorder + ffmpeg.wasm.
 
 import { toPng } from 'html-to-image'
 import { FFmpeg } from '@ffmpeg/ffmpeg'
@@ -23,6 +25,18 @@ import { fetchFile } from '@ffmpeg/util'
 import coreURL from '@ffmpeg/core?url'
 import wasmURL from '@ffmpeg/core/wasm?url'
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer'
+
+// MediaStreamTrackProcessor (Chromium) isn't in the TS DOM lib yet. Minimal
+// declaration for the audio-track reader we use in the WebCodecs path.
+declare global {
+  interface MediaStreamTrackProcessor<T = AudioData> {
+    readable: ReadableStream<T>
+  }
+  var MediaStreamTrackProcessor: {
+    prototype: MediaStreamTrackProcessor
+    new (init: { track: MediaStreamTrack; maxBufferSize?: number }): MediaStreamTrackProcessor<AudioData>
+  }
+}
 
 export interface Rect {
   x: number
@@ -43,12 +57,6 @@ export interface VideoExportOpts {
 }
 
 const FPS = 30
-// Play the source clip faster than realtime while pulling decoded frames. On
-// Chromium desktop 1080p decodes comfortably above 2×, so this roughly halves
-// the capture time. If the decoder can't keep up, frames simply arrive slower
-// and the constant-frame-rate resampler below duplicates as needed — output
-// stays correct, it just takes longer.
-const CAPTURE_SPEED = 2
 // H.264 Main profile, level 4.0 — broad decoder compatibility (WhatsApp, older
 // Android). Level 4.0 covers both 1080×1920 and 1600×900.
 const AVC_CODEC = 'avc1.4D0028'
@@ -189,7 +197,10 @@ function hasWebCodecs(): boolean {
     typeof VideoEncoder !== 'undefined' &&
     typeof AudioEncoder !== 'undefined' &&
     typeof VideoFrame !== 'undefined' &&
-    typeof AudioData !== 'undefined'
+    typeof AudioData !== 'undefined' &&
+    // We tap the clip's audio through a MediaStreamTrackProcessor; without it
+    // (Safari) there's no audio, so defer to the MediaRecorder fallback.
+    typeof MediaStreamTrackProcessor !== 'undefined'
   )
 }
 
@@ -208,45 +219,26 @@ async function videoConfigSupported(width: number, height: number): Promise<bool
   }
 }
 
-/** Decode the clip's audio and build a planar buffer for [start, start+duration],
- *  looping the source if it is shorter. Falls back to silence (so the MP4 always
- *  carries an audio track — WhatsApp refuses to preview files without one). */
-async function buildAudioSegment(
-  video: HTMLVideoElement,
-  start: number,
-  duration: number,
-): Promise<{ sampleRate: number; channels: number; planes: Float32Array[] }> {
-  const src = video.currentSrc || video.src
-  let decoded: AudioBuffer | null = null
-  let sampleRate = 48_000
-  const actx = new AudioContext()
-  try {
-    sampleRate = actx.sampleRate
-    const buf = await (await fetch(src)).arrayBuffer()
-    decoded = await actx.decodeAudioData(buf)
-  } catch {
-    // No audio track (or undecodable) — `decoded` stays null → silence below.
-  } finally {
-    actx.close()
+// A MediaElementAudioSourceNode can be created only once per element, and
+// creating it permanently reroutes the element's audio into the graph. Cache it
+// so re-exports reuse the same node instead of throwing.
+interface AudioGraph {
+  ctx: AudioContext
+  source: MediaElementAudioSourceNode
+}
+const audioGraphs = new WeakMap<HTMLVideoElement, AudioGraph>()
+function getAudioGraph(video: HTMLVideoElement): AudioGraph {
+  let g = audioGraphs.get(video)
+  if (!g) {
+    const ctx = new AudioContext()
+    // Once this node exists the element no longer plays to the speakers unless
+    // we connect it to ctx.destination (we never do) — so audio stays silent
+    // for the user while we tap it for the export.
+    const source = ctx.createMediaElementSource(video)
+    g = { ctx, source }
+    audioGraphs.set(video, g)
   }
-
-  const outSamples = Math.round(duration * sampleRate)
-  const channels = decoded ? Math.min(decoded.numberOfChannels, 2) : 2
-  const planes: Float32Array[] = []
-  for (let c = 0; c < channels; c++) planes.push(new Float32Array(outSamples))
-
-  if (decoded) {
-    const startSample = Math.floor(start * sampleRate)
-    const span = decoded.length - startSample // start → end of source
-    if (span > 0) {
-      for (let c = 0; c < channels; c++) {
-        const srcCh = decoded.getChannelData(Math.min(c, decoded.numberOfChannels - 1))
-        const dst = planes[c]
-        for (let i = 0; i < outSamples; i++) dst[i] = srcCh[startSample + (i % span)] || 0
-      }
-    }
-  }
-  return { sampleRate, channels, planes }
+  return g
 }
 
 async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
@@ -256,20 +248,37 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
   const overlayUrl = await toPng(overlayNode, { pixelRatio: 1, cacheBust: true })
   const overlay = await loadImage(overlayUrl)
 
-  // Decode audio up front so the muxer can be configured with its real params.
-  const audio = await buildAudioSegment(video, start, duration)
+  // Tap the clip's audio through the WebAudio graph. decodeAudioData can't be
+  // used here — it throws EncodingError on most *video* containers — so we route
+  // the element's live audio into a MediaStreamAudioDestinationNode and read it
+  // as AudioData during playback. The destination always yields audio (silence
+  // if the clip has none), guaranteeing an audio track for WhatsApp.
+  const { ctx, source } = getAudioGraph(video)
+  if (ctx.state === 'suspended') await ctx.resume()
+  const dest = ctx.createMediaStreamDestination()
+  source.disconnect()
+  source.connect(dest)
+  const audioTrack = dest.stream.getAudioTracks()[0]
+  const audioSampleRate = ctx.sampleRate
+  const audioChannels = 2
 
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
     video: { codec: 'avc', width: canvasW, height: canvasH, frameRate: FPS },
-    audio: { codec: 'aac', numberOfChannels: audio.channels, sampleRate: audio.sampleRate },
+    audio: { codec: 'aac', numberOfChannels: audioChannels, sampleRate: audioSampleRate },
     fastStart: 'in-memory', // metadata at the front — the +faststart equivalent.
+    // The audio tap's timestamps are wall-clock (document age), not zero-based;
+    // 'offset' rebases each track to start at 0 so playback isn't front-padded.
+    firstTimestampBehavior: 'offset',
   })
 
   let encoderError: Error | null = null
+  const onEncErr = (e: Error) => {
+    if (!encoderError) encoderError = e
+  }
   const videoEncoder = new VideoEncoder({
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-    error: (e) => (encoderError = e),
+    error: onEncErr,
   })
   videoEncoder.configure({
     codec: AVC_CODEC,
@@ -280,12 +289,24 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
     // 'avc' → decoderConfig carries the avcC box the muxer needs.
     avc: { format: 'avc' },
   })
+  const audioEncoder = new AudioEncoder({
+    output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+    error: onEncErr,
+  })
+  audioEncoder.configure({
+    codec: 'mp4a.40.2',
+    sampleRate: audioSampleRate,
+    numberOfChannels: audioChannels,
+    bitrate: AUDIO_BITRATE,
+  })
 
   const { canvas, composite } = buildCompositor(overlay, video, canvasW, canvasH, hero)
 
   await prepareVideo(video, start)
+  // Unmute so the tap carries real audio; the source node above keeps the
+  // speakers silent (its output is never connected to ctx.destination).
+  video.muted = false
   await video.play()
-  video.playbackRate = CAPTURE_SPEED
 
   const totalFrames = Math.max(1, Math.round(duration * FPS))
   const frameDurUs = 1_000_000 / FPS
@@ -293,8 +314,7 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
 
   // Emit constant-frame-rate frames from the *current* canvas for every output
   // slot up to `effSec` of composited playback time. Decouples output pacing
-  // from decode jitter and playbackRate: slow decode → duplicated frames, fast
-  // decode → sampled down, both CFR.
+  // from decode jitter: a slow frame duplicates, a fast one is sampled down.
   const emitUpTo = (effSec: number) => {
     while (outIdx < totalFrames && outIdx / FPS <= effSec + 1e-6) {
       const frame = new VideoFrame(canvas, {
@@ -307,8 +327,35 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
     }
   }
 
-  // Pull frames from the decoded clip. requestVideoFrameCallback fires once per
-  // decoded frame (independent of playbackRate), so it's the natural driver.
+  // ---- Audio pump: read AudioData frames and feed the encoder concurrently. ----
+  let audioStop = false
+  const reader = new MediaStreamTrackProcessor({ track: audioTrack }).readable.getReader()
+  const audioPump = (async () => {
+    let firstTs = -1
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      if (audioStop || encoderError) {
+        value.close()
+        break
+      }
+      if (firstTs < 0) firstTs = value.timestamp
+      // Trim to the target duration by the audio's own timeline, so its length
+      // matches the CFR video regardless of wall-clock capture time.
+      if ((value.timestamp - firstTs) / 1_000_000 >= duration) {
+        value.close()
+        break
+      }
+      try {
+        audioEncoder.encode(value)
+      } catch (e) {
+        onEncErr(e as Error)
+      }
+      value.close()
+    }
+  })()
+
+  // Pull video frames. requestVideoFrameCallback fires once per decoded frame.
   const rvfc = (
     video as unknown as {
       requestVideoFrameCallback?: (cb: (now: number, meta: { mediaTime: number }) => void) => number
@@ -329,9 +376,7 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
       resolve()
     }
     // rVFC only fires on new decoded frames, so a stalled clip would hang the
-    // loop. This wall-clock backstop guarantees we stop. Size it for the worst
-    // case (decoder can't sustain CAPTURE_SPEED → capture runs at ~1×), not the
-    // hoped-for fast case, or a slow device would get truncated early.
+    // loop. This wall-clock backstop guarantees we stop.
     const watchdog = setTimeout(finish, (duration + 4) * 1000)
 
     const onDecoded = async (mediaTime: number) => {
@@ -355,7 +400,8 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
         finish()
         return
       }
-      // Loop the clip if it is shorter than the requested duration.
+      // Loop the clip if it is shorter than the requested duration (the app
+      // normally clamps duration ≤ clip length, so this rarely triggers).
       if (video.currentTime >= start + duration || video.ended) video.currentTime = start
 
       // Backpressure: don't let VideoFrames pile up faster than the hardware
@@ -372,54 +418,32 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
     schedule()
   })
 
-  video.pause()
-  video.playbackRate = 1
-
-  // Playback may have ended a hair early — pad the tail with the last frame so
-  // the output is exactly `duration` long.
+  // Playback may have ended a hair early — pad the tail so the output is exactly
+  // `duration` long.
   if (!encoderError) emitUpTo(duration)
+
+  video.pause()
+  video.muted = true
+  audioStop = true
+  try {
+    await reader.cancel()
+  } catch {
+    /* already ended */
+  }
+  await audioPump
+  source.disconnect() // stop feeding the tap; keep ctx/source cached for reuse
 
   if (encoderError) {
     videoEncoder.close()
+    audioEncoder.close()
     throw encoderError
   }
   await videoEncoder.flush()
   videoEncoder.close()
-
-  // ---- Audio: encode the prepared segment to AAC. ----
   onStatus?.('Processando áudio…')
-  let audioError: Error | null = null
-  const audioEncoder = new AudioEncoder({
-    output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-    error: (e) => (audioError = e),
-  })
-  audioEncoder.configure({
-    codec: 'mp4a.40.2',
-    sampleRate: audio.sampleRate,
-    numberOfChannels: audio.channels,
-    bitrate: AUDIO_BITRATE,
-  })
-  const CHUNK = audio.sampleRate // ~1s per AudioData
-  const total = audio.planes[0].length
-  for (let off = 0; off < total && !audioError; off += CHUNK) {
-    const n = Math.min(CHUNK, total - off)
-    // Planar layout: [ch0 samples][ch1 samples][…].
-    const data = new Float32Array(n * audio.channels)
-    for (let c = 0; c < audio.channels; c++) data.set(audio.planes[c].subarray(off, off + n), c * n)
-    const ad = new AudioData({
-      format: 'f32-planar',
-      sampleRate: audio.sampleRate,
-      numberOfFrames: n,
-      numberOfChannels: audio.channels,
-      timestamp: Math.round((off / audio.sampleRate) * 1_000_000),
-      data,
-    })
-    audioEncoder.encode(ad)
-    ad.close()
-  }
   await audioEncoder.flush()
   audioEncoder.close()
-  if (audioError) throw audioError
+  if (encoderError) throw encoderError
 
   onStatus?.('Finalizando…')
   muxer.finalize()

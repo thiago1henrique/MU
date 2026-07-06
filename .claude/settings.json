@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(Object.keys\\({...p.dependencies,...p.devDependencies}\\).join\\('\\\\n'\\)\\)\")",
+      "Read(//c/Program Files/Google/Chrome/Application/**)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft/Edge/Application/**)",
+      "Bash(SP=\"/c/Users/thiag/AppData/Local/Temp/claude/d--Dev-Pessoal-Echo/82dd5f53-108c-410b-9283-f0e28462d9cf/scratchpad\"; cp node_modules/mp4-muxer/build/mp4-muxer.js \"$SP/mp4-muxer.js\" && echo \"copied to $SP\")",
+      "Bash('/c/Program Files \\(x86\\)/Microsoft/Edge/Application/msedge.exe' --headless=new --disable-gpu --no-sandbox --virtual-time-budget=15000 --dump-dom file:///C:/Users/thiag/AppData/Local/Temp/claude/d--Dev-Pessoal-Echo/82dd5f53-108c-410b-9283-f0e28462d9cf/scratchpad/test.html)",
+      "Bash(ffmpeg -version)",
+      "PowerShell(npx tsc -b --pretty false 2>&1)",
+      "Bash(convert -background none -density 384 pwa-icon.svg -resize 192x192 pwa-192.png)",
+      "Bash(convert -background none -density 384 pwa-icon.svg -resize 512x512 pwa-512.png)",
+      "Bash(convert -background none -density 384 pwa-icon.svg -resize 180x180 apple-touch-icon.png)",
+      "Bash(node gen.mjs)",
+      "Bash(npm run *)",
+      "Bash(pkill -f msedge)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\thiag\\AppData\\Local\\Temp\\claude\\d--Dev-Pessoal-Echo\\82dd5f53-108c-410b-9283-f0e28462d9cf\\scratchpad"
+    ]
+  }
+}
