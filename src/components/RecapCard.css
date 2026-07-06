@@ -1,6 +1,14 @@
 /* Shareable recap card. Rendered at exact pixel sizes for 1:1 PNG export.
    Colors/typography are intentionally neutral — meant to be restyled later. */
 
+/* Registered so the card accent can cross-fade (instead of snapping) between the
+   Last.fm crimson and the Spotify green picked by [data-source] below. */
+@property --c-accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e0472d;
+}
+
 .card {
   --c-bg: #131010;
   --c-bg2: #1f1712;
@@ -8,6 +16,7 @@
   --c-muted: #a89f92;
   --c-accent: #e0472d;
   --c-line: rgba(240, 230, 214, 0.09);
+  transition: --c-accent 0.45s ease;
 
   --c-display: 'Bricolage Grotesque Variable', system-ui, sans-serif;
   --c-mono: 'Space Mono', ui-monospace, monospace;
@@ -19,6 +28,13 @@
   color: var(--c-text);
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
   text-align: left;
+}
+
+/* Source-driven accent. Default (Last.fm) is the crimson above; under Spotify
+   the whole card recolors to Spotify green. Kept vivid/dark-friendly since the
+   card is always on a dark background regardless of the page theme. */
+.app[data-source='spotify'] .card {
+  --c-accent: #1ed760;
 }
 
 .card *,
@@ -238,9 +254,13 @@ video.card__hero-img {
 }
 .card__item-name {
   font-weight: 700;
-  white-space: nowrap;
+  /* Wrap to at most two lines instead of hard-truncating long titles. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .card__item-sub {
   font-family: var(--c-mono);
@@ -280,12 +300,17 @@ video.card__hero-img {
 .card__footer-meta {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
+  /* Wrap instead of letting the handle overflow past the card's clipped edge. */
+  flex-wrap: wrap;
+  gap: 6px 24px;
   font-family: var(--c-mono);
   color: var(--c-muted);
 }
 .card__handle {
   color: var(--c-accent);
   font-weight: 700;
+  white-space: nowrap;
 }
 
 /* =================== STORY (1080 × 1920) =================== */

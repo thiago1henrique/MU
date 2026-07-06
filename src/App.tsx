@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ChangeEvent, CSSProperties, FormEvent } from 'react'
 import type { Period, Recap, Source } from './types'
 import { periodLabel, SOURCE_PERIODS } from './types'
 import { fetchRecap, getApiKey, setApiKey } from './lib/lastfm'
@@ -10,7 +10,14 @@ import { exportCardVideo, downloadBlob } from './lib/videoExport'
 import { RecapCard } from './components/RecapCard'
 import './App.css'
 
-const MAX_CLIP = 15
+const MAX_CLIP = 60
+
+/** Seconds as a clock: 58 → "58s", 60 → "1:00", 81 → "1:21". */
+function clock(seconds: number): string {
+  const total = Math.round(seconds)
+  if (total < 60) return `${total}s`
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
 
 /** Dispatches the recap fetch to the selected source. */
 function fetchFor(source: Source, user: string, period: Period): Promise<Recap> {
@@ -34,6 +41,9 @@ export default function App() {
   )
   const [user, setUser] = useState(() => localStorage.getItem('lastfm_user') ?? '')
   const [period, setPeriod] = useState<Period>('month')
+  // Which format the preview shows (also what the toggle above it drives). Both
+  // formats are always exportable regardless of what's previewed.
+  const [previewFmt, setPreviewFmt] = useState<'story' | 'feed'>('story')
   const [apiKey, setApiKeyState] = useState(getApiKey())
   // Spotify auth state.
   const [spClientId, setSpClientId] = useState(spotify.getClientId())
@@ -64,6 +74,24 @@ export default function App() {
   const [clipStart, setClipStart] = useState(0)
   const [clipLen, setClipLen] = useState(MAX_CLIP)
 
+  // Preview scaling: the RecapCard renders at exact export px (1080×1920 story,
+  // 1600×900 feed); we measure the frame's real width and scale the card down
+  // to fit it, so the preview stays crisp and responsive at any screen size.
+  // A callback ref (re)attaches the observer whenever the frame mounts, which
+  // matters because it only exists once a recap has been generated.
+  const [previewW, setPreviewW] = useState(0)
+  const roRef = useRef<ResizeObserver | null>(null)
+  const previewRef = useCallback((node: HTMLDivElement | null) => {
+    roRef.current?.disconnect()
+    if (!node) return
+    setPreviewW(node.clientWidth)
+    roRef.current = new ResizeObserver(([entry]) => setPreviewW(entry.contentRect.width))
+    roRef.current.observe(node)
+  }, [])
+  const previewBase = previewFmt === 'story' ? { w: 1080, h: 1920 } : { w: 1600, h: 900 }
+  const previewScale = previewW ? previewW / previewBase.w : 0
+  const previewH = previewW * (previewBase.h / previewBase.w)
+
   const storyRef = useRef<HTMLDivElement>(null)
   const feedRef = useRef<HTMLDivElement>(null)
   const overlayStoryRef = useRef<HTMLDivElement>(null)
@@ -76,7 +104,11 @@ export default function App() {
   // Ready to generate: Last.fm needs a username + API key; Spotify needs a
   // connected account.
   const ready = source === 'spotify' ? spConnected : hasKey && user.trim().length > 0
-  const quoteSong = recap?.topTracks[quoteSongIdx]?.name
+  const quoteTrack = recap?.topTracks[quoteSongIdx]
+  // Citation shown under the lyric quote: "Song, Artist".
+  const quoteSong = quoteTrack
+    ? [quoteTrack.name, quoteTrack.artist].filter(Boolean).join(', ')
+    : undefined
   const maxStart = Math.max(0, videoDur - clipLen)
   const start = Math.min(clipStart, maxStart)
 
@@ -191,12 +223,14 @@ export default function App() {
     const node = kind === 'story' ? storyRef.current : feedRef.current
     if (!node || !recap) return
     setExporting(kind)
+    setVstatus('Gerando imagem…')
     try {
       await downloadNodeAsPng(node, `recap-${recap.user}-${recap.period}-${kind}.png`)
     } catch {
       setError('Falha ao gerar o PNG. Tente gerar o recap novamente.')
     } finally {
       setExporting(null)
+      setVstatus(null)
     }
   }
 
@@ -274,11 +308,31 @@ export default function App() {
     ? { videoUrl, videoStart: start, videoDuration: clipLen }
     : {}
 
+  // While a card is exporting, the clicked button carries its live status inline
+  // (percent + a loading fill); the other buttons just disable. The percent is
+  // parsed from the status string ("Gravando… 13%", "Convertendo… 40%").
+  const exportPct = vstatus?.match(/(\d+)%/)?.[1]
+  const exportLabel = vstatus ?? 'Gerando…'
+  function exportBtnProps(kind: 'story' | 'feed') {
+    const active = exporting === kind
+    return {
+      className:
+        'btn btn--primary' +
+        (active ? ' is-exporting' : '') +
+        (active && !exportPct ? ' is-indeterminate' : ''),
+      disabled: !!exporting,
+      style:
+        active && exportPct
+          ? ({ '--progress': `${exportPct}%` } as CSSProperties)
+          : undefined,
+    }
+  }
+
   return (
-    <div className="app">
+    <div className="app" data-source={source}>
       <header className="masthead">
         <span className="masthead__cat">Relatório de escuta</span>
-        <h1 className="masthead__title">Recap</h1>
+        <h1 className="masthead__title">Echo</h1>
         <p className="masthead__sub">
           Um retrato do que você andou ouvindo, prensado numa imagem pronta pra
           story do Instagram e feed do Twitter.
@@ -340,7 +394,10 @@ export default function App() {
                 Spotify pra autorizar e volta pra cá.
               </p>
               <button className="btn btn--spotify" onClick={connectSpotify}>
-                <span className="btn__spotify-mark" aria-hidden>♫</span> Entrar com Spotify
+                <svg className="btn__spotify-mark" viewBox="0 0 168 168" aria-hidden fill="currentColor">
+                  <path d="M83.996.277C37.747.277.253 37.77.253 84.019c0 46.251 37.494 83.741 83.743 83.741 46.254 0 83.744-37.49 83.744-83.741 0-46.246-37.49-83.738-83.745-83.738l.001-.004zm38.404 120.78a5.217 5.217 0 01-7.18 1.73c-19.662-12.01-44.414-14.73-73.564-8.07a5.222 5.222 0 01-6.249-3.93 5.213 5.213 0 013.926-6.25c31.9-7.291 59.263-4.15 81.337 9.34 2.46 1.51 3.24 4.72 1.73 7.18zm10.25-22.805c-1.89 3.075-5.91 4.045-8.98 2.155-22.51-13.839-56.823-17.846-83.448-9.764-3.453 1.043-7.1-.903-8.148-4.35a6.538 6.538 0 014.354-8.143c30.413-9.228 68.222-4.758 94.072 11.127 3.07 1.89 4.04 5.91 2.15 8.976v-.001zm.88-23.744c-26.99-16.031-71.52-17.505-97.289-9.684-4.138 1.255-8.514-1.081-9.768-5.219a7.835 7.835 0 015.221-9.771c29.581-8.98 78.756-7.245 109.83 11.202a7.823 7.823 0 012.74 10.733c-2.2 3.722-7.02 4.949-10.73 2.739z" />
+                </svg>{' '}
+                Entrar com Spotify
               </button>
             </>
           ) : (
@@ -431,22 +488,52 @@ export default function App() {
 
       {recap && (
         <>
+          {/* Format toggle — drives which layout the preview below shows. */}
+          <div className="segmented segmented--format">
+            <span
+              className="segmented__slider"
+              style={{ width: '50%', transform: `translateX(${previewFmt === 'feed' ? 100 : 0}%)` }}
+            />
+            <button
+              type="button"
+              className={`segmented__opt ${previewFmt === 'story' ? 'is-active' : ''}`}
+              onClick={() => setPreviewFmt('story')}
+            >
+              Story · 9:16
+            </button>
+            <button
+              type="button"
+              className={`segmented__opt ${previewFmt === 'feed' ? 'is-active' : ''}`}
+              onClick={() => setPreviewFmt('feed')}
+            >
+              Feed · 16:9
+            </button>
+          </div>
+
+          <div className="preview">
+            <div
+              className={`preview__frame preview__frame--${previewFmt}`}
+              ref={previewRef}
+              style={{ height: previewH || undefined }}
+            >
+              <div
+                className="preview__anim"
+                key={`${period}-${previewFmt}`}
+                style={{ transform: `scale(${previewScale})` }}
+              >
+                <RecapCard recap={recap} variant={previewFmt} quote={quote} quoteSong={quoteSong} {...videoProps} />
+              </div>
+            </div>
+          </div>
+
           <div className="export-bar">
             {videoUrl && !IS_FIREFOX ? (
               <>
-                <button
-                  className="btn btn--primary"
-                  onClick={() => handleVideoExport('story')}
-                  disabled={!!exporting}
-                >
-                  {exporting === 'story' ? 'Gerando…' : 'MP4 Story · 1080×1920'}
+                <button {...exportBtnProps('story')} onClick={() => handleVideoExport('story')}>
+                  {exporting === 'story' ? exportLabel : 'MP4 Story · 1080×1920'}
                 </button>
-                <button
-                  className="btn btn--primary"
-                  onClick={() => handleVideoExport('feed')}
-                  disabled={!!exporting}
-                >
-                  {exporting === 'feed' ? 'Gerando…' : 'MP4 Feed · 1600×900'}
+                <button {...exportBtnProps('feed')} onClick={() => handleVideoExport('feed')}>
+                  {exporting === 'feed' ? exportLabel : 'MP4 Feed · 1600×900'}
                 </button>
               </>
             ) : (
@@ -469,19 +556,11 @@ export default function App() {
                     </button>
                   </>
                 )}
-                <button
-                  className="btn btn--primary"
-                  onClick={() => handlePngExport('story')}
-                  disabled={!!exporting}
-                >
-                  {exporting === 'story' ? 'Gerando…' : 'PNG Story · 1080×1920'}
+                <button {...exportBtnProps('story')} onClick={() => handlePngExport('story')}>
+                  {exporting === 'story' ? exportLabel : 'PNG Story · 1080×1920'}
                 </button>
-                <button
-                  className="btn btn--primary"
-                  onClick={() => handlePngExport('feed')}
-                  disabled={!!exporting}
-                >
-                  {exporting === 'feed' ? 'Gerando…' : 'PNG Feed · 1600×900'}
+                <button {...exportBtnProps('feed')} onClick={() => handlePngExport('feed')}>
+                  {exporting === 'feed' ? exportLabel : 'PNG Feed · 1600×900'}
                 </button>
               </>
             )}
@@ -492,13 +571,6 @@ export default function App() {
               download aqui é o PNG (foto). Para gerar o MP4, abra no Chrome, Edge ou Safari.
             </p>
           )}
-          {vstatus && <p className="quote-editor__hint">{vstatus}</p>}
-
-          <div className="preview">
-            <div className="preview__scaler">
-              <RecapCard recap={recap} variant="story" quote={quote} quoteSong={quoteSong} {...videoProps} />
-            </div>
-          </div>
 
           <section
             className={`panel video-editor ${IS_FIREFOX ? 'is-disabled' : ''}`}
@@ -539,7 +611,7 @@ export default function App() {
             {videoUrl && !IS_FIREFOX && (
               <div className="video-editor__controls">
                 <label className="video-editor__row">
-                  <span>Início do trecho: {start.toFixed(1)}s</span>
+                  <span>Início do trecho: {clock(start)}</span>
                   <input
                     type="range"
                     min={0}
@@ -550,7 +622,7 @@ export default function App() {
                   />
                 </label>
                 <label className="video-editor__row">
-                  <span>Duração: {clipLen.toFixed(1)}s (máx {MAX_CLIP})</span>
+                  <span>Duração: {clock(clipLen)} (máx {clock(MAX_CLIP)})</span>
                   <input
                     type="range"
                     min={1}
@@ -567,13 +639,16 @@ export default function App() {
             )}
           </section>
 
-          <section className="panel quote-editor">
+          <section className="panel encarte">
             <div className="panel__head">
               <span className="eyebrow">Encarte</span>
               <h2 className="panel__title">Verso em destaque</h2>
+              <p className="panel__lead">
+                Marque os versos da letra e eles saem impressos no card.
+              </p>
             </div>
 
-            <label className="quote-editor__field">
+            <label className="encarte__field">
               <span className="field__label">Faixa</span>
               <div className="select-wrap">
                 <select
@@ -594,32 +669,48 @@ export default function App() {
             {lyricsError && <p className="error">{lyricsError}</p>}
             {!lyricsLoading && !lyricsError && lyricLines.length === 0 && (
               <p className="quote-editor__hint">
-                Letra não encontrada. Escreva o verso manualmente abaixo.
+                Letra não encontrada. Escreva o verso à mão abaixo.
               </p>
             )}
 
             {lyricLines.length > 0 && (
-              <div className="lyric-lines">
-                {lyricLines.map((line, i) => (
-                  <button
-                    type="button"
-                    key={i}
-                    className={`lyric-line ${selected.includes(i) ? 'is-selected' : ''}`}
-                    onClick={() => toggleLine(i)}
-                  >
-                    {line}
-                  </button>
-                ))}
+              <div className="encarte__field">
+                <div className="lyric-sheet__meta">
+                  <span className="field__label">Letra</span>
+                  <span className="lyric-sheet__count">
+                    {selected.length > 0
+                      ? `${selected.length} ${selected.length === 1 ? 'linha' : 'linhas'} marcada${
+                          selected.length === 1 ? '' : 's'
+                        }`
+                      : 'toque para marcar'}
+                  </span>
+                </div>
+                <div className="lyric-lines">
+                  {lyricLines.map((line, i) => (
+                    <button
+                      type="button"
+                      key={i}
+                      className={`lyric-line ${selected.includes(i) ? 'is-selected' : ''}`}
+                      onClick={() => toggleLine(i)}
+                    >
+                      <span className="lyric-line__num">{String(i + 1).padStart(2, '0')}</span>
+                      <span className="lyric-line__text">{line}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
-            <textarea
-              className="input quote-editor__text"
-              rows={3}
-              placeholder="Clique nas linhas acima ou escreva o verso aqui…"
-              value={quote}
-              onChange={(e) => setQuote(e.target.value)}
-            />
+            <label className="encarte__field">
+              <span className="field__label">Seu verso</span>
+              <textarea
+                className="input quote-editor__text"
+                rows={3}
+                placeholder="Toque nas linhas acima ou escreva o verso aqui…"
+                value={quote}
+                onChange={(e) => setQuote(e.target.value)}
+              />
+            </label>
             {quote && (
               <button className="btn quote-editor__clear" onClick={clearQuote}>
                 Limpar verso

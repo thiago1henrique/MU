@@ -9,6 +9,28 @@
   margin: 0 auto;
   padding: 56px 20px 96px;
   text-align: center;
+  /* The accent trio is redeclared per source below; animating the registered
+     <color> properties here makes every var(--accent) consumer (buttons,
+     slider, eyebrow, focus rings…) cross-fade together on source switch. */
+  transition:
+    --accent 0.45s ease,
+    --accent-bg 0.45s ease,
+    --accent-border 0.45s ease;
+}
+.app[data-source='lastfm'] {
+  --accent: var(--accent-lastfm);
+  --accent-bg: var(--accent-lastfm-bg);
+  --accent-border: var(--accent-lastfm-border);
+}
+.app[data-source='spotify'] {
+  --accent: var(--accent-spotify);
+  --accent-bg: var(--accent-spotify-bg);
+  --accent-border: var(--accent-spotify-border);
+}
+@media (prefers-reduced-motion: reduce) {
+  .app {
+    transition: none;
+  }
 }
 
 /* ---- masthead ---- */
@@ -147,8 +169,9 @@
   filter: brightness(1.06);
 }
 .btn__spotify-mark {
-  font-size: 16px;
-  line-height: 1;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
 /* ---- auth / key box ---- */
@@ -207,6 +230,11 @@
 .segmented--source {
   margin-bottom: 20px;
 }
+/* Format toggle sits above the preview; give it room from the controls above. */
+.segmented--format {
+  max-width: 360px;
+  margin: 32px auto 16px;
+}
 .segmented {
   position: relative;
   display: flex;
@@ -263,25 +291,119 @@
   gap: 10px;
   justify-content: center;
   flex-wrap: wrap;
-  margin: 36px 0 24px;
+  margin: 20px 0 24px;
 }
 
-/* ---- preview (story card scaled down) ---- */
+/* While exporting, the clicked button shows its progress inline: a brighter
+   fill grows left→right to --progress, over the accent background. Text stays
+   legible on top (it's just a background layer). */
+.btn--primary.is-exporting {
+  cursor: progress;
+  background-image: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.3) var(--progress, 0%),
+    rgba(255, 255, 255, 0) var(--progress, 0%)
+  );
+}
+/* Keep the exporting button fully opaque despite being disabled, so the
+   progress reads clearly (the other buttons still dim via :disabled). */
+.btn--primary.is-exporting:disabled {
+  opacity: 1;
+}
+/* Indeterminate (no percentage yet): a highlight sweeps across the button. */
+.btn--primary.is-exporting.is-indeterminate {
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 20%,
+    rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0) 80%
+  );
+  background-size: 45% 100%;
+  background-repeat: no-repeat;
+  animation: btn-shimmer 1.1s linear infinite;
+}
+@keyframes btn-shimmer {
+  from {
+    background-position: -45% 0;
+  }
+  to {
+    background-position: 145% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn--primary.is-exporting.is-indeterminate {
+    animation: none;
+  }
+}
+
+/* ---- preview (recap card scaled down to fit) ---- */
 .preview {
   display: flex;
   justify-content: center;
+  margin-bottom: 8px;
 }
-.preview__scaler {
-  /* story is 1080px wide; scaled to ~324px preview (0.3×) */
-  width: 324px;
-  height: 576px; /* 1920 * 0.3 */
+/* The frame's width is capped per format; the card inside is scaled (inline, in
+   App.tsx) by measured width ÷ export width so it fills the frame exactly. The
+   height is set inline to match. Height animates so switching format eases. */
+.preview__frame {
+  width: 100%;
   overflow: hidden;
   border-radius: 14px;
   box-shadow: var(--shadow);
+  transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.preview__scaler .card {
-  transform: scale(0.3);
+.preview__frame--story {
+  max-width: 324px;
+}
+.preview__frame--feed {
+  max-width: 560px;
+}
+.preview__anim {
   transform-origin: top left;
+}
+/* When the period changes, the keyed .preview__anim wrapper remounts, so the
+   card's inner content (hero text + each list row) animates in — staggered —
+   instead of the whole card popping. Scoped to .preview__anim so the off-screen
+   export cards are never captured mid-animation. The hero photo and thumbnails
+   re-fade on their own via FadeImg. */
+.preview__anim .card__hero-text,
+.preview__anim .card__item {
+  animation: content-in 460ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.preview__anim .card__hero-text {
+  animation-duration: 520ms;
+}
+/* Stagger the list rows (both columns animate in parallel). */
+.preview__anim .card__item:nth-child(1) {
+  animation-delay: 80ms;
+}
+.preview__anim .card__item:nth-child(2) {
+  animation-delay: 140ms;
+}
+.preview__anim .card__item:nth-child(3) {
+  animation-delay: 200ms;
+}
+.preview__anim .card__item:nth-child(4) {
+  animation-delay: 260ms;
+}
+.preview__anim .card__item:nth-child(5) {
+  animation-delay: 320ms;
+}
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preview__anim .card__hero-text,
+  .preview__anim .card__item {
+    animation: none;
+  }
 }
 
 /* off-screen render targets for export (kept in DOM, out of view) */
@@ -322,6 +444,12 @@
   color: var(--text);
   margin: 0 0 18px;
   line-height: 1.55;
+}
+.panel__lead {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
 }
 .panel__note {
   font-size: 13.5px;
@@ -408,7 +536,7 @@
 }
 
 /* ---- quote editor ---- */
-.quote-editor__field {
+.encarte__field {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -460,38 +588,101 @@
   color: var(--text);
   margin-bottom: 12px;
 }
+
+/* ---- the lyric sheet (the "encarte" you mark up) ---- */
+.lyric-sheet__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lyric-sheet__count {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
 .lyric-lines {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-height: 260px;
+  max-height: 270px;
   overflow-y: auto;
-  margin-bottom: 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px;
   background: var(--surface);
+  padding: 4px;
+  /* Fade the top/bottom edges so a partly-scrolled line reads as a page
+     continuing, not a broken cut-off row. */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 14px,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 14px,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
 }
+/* Each line is a row in a lyric booklet: a mono number in a ruled gutter, then
+   the verse. Marking a line lights the gutter and tints the row. */
 .lyric-line {
+  display: grid;
+  grid-template-columns: 2.6em 1fr;
+  align-items: start;
+  gap: 14px;
   font: inherit;
-  font-size: 15px;
-  line-height: 1.4;
   text-align: left;
   cursor: pointer;
-  padding: 8px 11px;
+  padding: 9px 12px 9px 6px;
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background 0.12s, box-shadow 0.12s;
+}
+.lyric-line__num {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.55;
+  text-align: right;
+  padding-right: 12px;
+  border-right: 1px solid var(--border);
+  color: var(--text);
+  opacity: 0.6;
+  transition: color 0.12s, opacity 0.12s;
+}
+.lyric-line__text {
+  font-size: 15px;
+  line-height: 1.5;
   color: var(--text-h);
-  transition: background 0.1s;
 }
 .lyric-line:hover {
-  background: var(--accent-bg);
+  background: var(--social-bg);
+}
+.lyric-line:hover .lyric-line__num {
+  opacity: 1;
 }
 .lyric-line.is-selected {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-bg);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.lyric-line.is-selected .lyric-line__num {
+  color: var(--accent);
+  opacity: 1;
+  border-right-color: var(--accent-border);
+}
+.lyric-line.is-selected .lyric-line__text {
   font-weight: 600;
+}
+.lyric-line:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .quote-editor__text {
   width: 100%;

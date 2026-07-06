@@ -212,9 +212,10 @@ export async function exportCardVideo(
   })
   await video.play()
 
-  onStatus?.('Gravando…')
+  onStatus?.('Gravando… 0%')
   recorder.start()
   const startedAt = performance.now()
+  let lastPct = -1
 
   await new Promise<void>((resolve) => {
     const frame = () => {
@@ -232,6 +233,11 @@ export async function exportCardVideo(
       ctx.drawImage(overlay, 0, 0, canvasW, canvasH)
 
       const elapsed = (performance.now() - startedAt) / 1000
+      const pct = Math.min(100, Math.round((elapsed / duration) * 100))
+      if (pct !== lastPct) {
+        lastPct = pct
+        onStatus?.(`Gravando… ${pct}%`)
+      }
       if (elapsed >= duration) {
         resolve()
         return

@@ -3,6 +3,25 @@
    (never blue-black), Last.fm-heritage crimson used with restraint, and the
    personality carried by type + structure: Bricolage Grotesque for display,
    Space Mono for every piece of data (counts, catalog labels, timings). */
+/* Register the accent trio as animatable <color> custom properties. This is
+   what lets the accent interpolate — instead of snapping — when the source
+   switches between Last.fm and Spotify (see .app transition in App.css). */
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #bf3a20;
+}
+@property --accent-bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(191, 58, 32, 0.09);
+}
+@property --accent-border {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(191, 58, 32, 0.35);
+}
+
 :root {
   /* Light = a printed paper insert. */
   --text: #6f665b;
@@ -11,9 +30,17 @@
   --surface: #f5efe4;
   --border: #d9cfbd;
   --code-bg: #e6dcca;
-  --accent: #bf3a20;
-  --accent-bg: rgba(191, 58, 32, 0.09);
-  --accent-border: rgba(191, 58, 32, 0.35);
+  /* Per-source accent palettes. The active --accent trio is chosen in App.css
+     based on [data-source]; these hold the two options it picks from. */
+  --accent-lastfm: #bf3a20;
+  --accent-lastfm-bg: rgba(191, 58, 32, 0.09);
+  --accent-lastfm-border: rgba(191, 58, 32, 0.35);
+  --accent-spotify: #1db954;
+  --accent-spotify-bg: rgba(29, 185, 84, 0.1);
+  --accent-spotify-border: rgba(29, 185, 84, 0.38);
+  --accent: var(--accent-lastfm);
+  --accent-bg: var(--accent-lastfm-bg);
+  --accent-border: var(--accent-lastfm-border);
   --social-bg: rgba(27, 22, 17, 0.03);
   --shadow:
     rgba(40, 28, 18, 0.12) 0 12px 24px -10px, rgba(40, 28, 18, 0.08) 0 4px 8px -4px;
@@ -46,9 +73,15 @@
     --surface: #1c1815;
     --border: #332c25;
     --code-bg: #1f1a16;
-    --accent: #e0472d;
-    --accent-bg: rgba(224, 71, 45, 0.15);
-    --accent-border: rgba(224, 71, 45, 0.42);
+    --accent-lastfm: #e0472d;
+    --accent-lastfm-bg: rgba(224, 71, 45, 0.15);
+    --accent-lastfm-border: rgba(224, 71, 45, 0.42);
+    --accent-spotify: #1ed760;
+    --accent-spotify-bg: rgba(30, 215, 96, 0.15);
+    --accent-spotify-border: rgba(30, 215, 96, 0.42);
+    --accent: var(--accent-lastfm);
+    --accent-bg: var(--accent-lastfm-bg);
+    --accent-border: var(--accent-lastfm-border);
     --social-bg: rgba(240, 230, 214, 0.04);
     --shadow:
       rgba(0, 0, 0, 0.5) 0 12px 24px -10px, rgba(0, 0, 0, 0.3) 0 4px 8px -4px;

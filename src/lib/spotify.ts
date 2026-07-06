@@ -8,16 +8,24 @@ import { proxied, toDataUrl } from './images'
 // redirected back here with a code we exchange for a token.
 //
 // IMPORTANT limitations of the public Web API (vs. Last.fm):
-// - No play counts per track/artist and no "minutes listened" — the API only
-//   returns *ranked* top lists. So Recap.scrobbles/minutes and the per-item
-//   playcounts are left undefined for this source.
+// - No play counts per track/artist and no total "minutes listened" — the API
+//   only returns *ranked* top lists. So the per-item playcounts and
+//   Recap.scrobbles are left undefined for this source.
 // - Only three fixed windows: short_term (~4 weeks), medium_term (~6 months),
 //   long_term (~1 year). No weekly view. See SOURCE_PERIODS in types.ts.
+//
+// Listening minutes are therefore ESTIMATED, not measured: we read the last ~50
+// plays (/me/player/recently-played), derive a daily listening rate from the
+// real durations + timestamps, and extrapolate it across the period window. It's
+// a rough figure (the card marks it with an asterisk), but grounded in the
+// user's actual recent behaviour rather than invented.
 
 const AUTH_URL = 'https://accounts.spotify.com/authorize'
 const TOKEN_URL = 'https://accounts.spotify.com/api/token'
 const API = 'https://api.spotify.com/v1'
-const SCOPE = 'user-top-read'
+// user-top-read: the ranked top lists. user-read-recently-played: the last ~50
+// plays, which we use to estimate listening minutes (the API exposes no totals).
+const SCOPE = 'user-top-read user-read-recently-played'
 
 const LS = {
   clientId: 'spotify_client_id',
@@ -230,6 +238,54 @@ interface SpTrack {
 
 const firstImage = (imgs?: SpImage[]) => imgs?.[0]?.url
 
+// Real length of each top-list window, used to extrapolate the recent listening
+// rate. Spotify only serves short/medium/long term (see SOURCE_PERIODS), so
+// 'week' never reaches here, but we map it for completeness.
+const PERIOD_DAYS: Record<Period, number> = {
+  week: 7,
+  month: 28, // short_term ≈ 4 weeks
+  year: 182, // medium_term ≈ 6 months
+  all: 365, // long_term ≈ 1 year
+}
+
+// A single person can't realistically average more than this many minutes/day of
+// listening; caps the extrapolation when the recent window is a dense binge.
+const MAX_MINUTES_PER_DAY = 600
+
+interface SpRecentItem {
+  track?: { duration_ms?: number }
+  played_at?: string
+}
+
+/**
+ * Estimates minutes listened over the period from the last ~50 plays. Returns
+ * undefined if there isn't enough recent history to say anything meaningful.
+ */
+async function estimateMinutes(period: Period): Promise<number | undefined> {
+  let items: SpRecentItem[]
+  try {
+    const resp = await api<{ items: SpRecentItem[] }>('/me/player/recently-played?limit=50')
+    items = resp.items ?? []
+  } catch {
+    return undefined // e.g. missing scope on an old token — degrade gracefully.
+  }
+  if (items.length < 2) return undefined
+
+  const totalMs = items.reduce((sum, it) => sum + (it.track?.duration_ms ?? 0), 0)
+  const times = items
+    .map((it) => (it.played_at ? Date.parse(it.played_at) : NaN))
+    .filter((t) => !Number.isNaN(t))
+  if (times.length < 2) return undefined
+
+  const spanMs = Math.max(...times) - Math.min(...times)
+  if (spanMs <= 0) return undefined
+
+  // Fraction of wall-clock time spent listening across the recent window, turned
+  // into minutes/day, capped so a short binge doesn't extrapolate to absurdity.
+  const minutesPerDay = Math.min((totalMs / spanMs) * 24 * 60, MAX_MINUTES_PER_DAY)
+  return Math.round(minutesPerDay * PERIOD_DAYS[period])
+}
+
 /**
  * Builds a recap from Spotify's top lists. No play counts / minutes: the public
  * API doesn't expose them, so those fields stay undefined and the card hides
@@ -237,10 +293,11 @@ const firstImage = (imgs?: SpImage[]) => imgs?.[0]?.url
  */
 export async function fetchRecap(_user: string, period: Period): Promise<Recap> {
   const range = TIME_RANGE[period]
-  const [me, artistsResp, tracksResp] = await Promise.all([
+  const [me, artistsResp, tracksResp, minutes] = await Promise.all([
     api<{ display_name?: string; id: string }>('/me'),
     api<{ items: SpArtist[] }>(`/me/top/artists?limit=5&time_range=${range}`),
     api<{ items: SpTrack[] }>(`/me/top/tracks?limit=5&time_range=${range}`),
+    estimateMinutes(period),
   ])
 
   const artists = artistsResp.items ?? []
@@ -272,6 +329,8 @@ export async function fetchRecap(_user: string, period: Period): Promise<Recap> 
     topTracks,
     heroArtist: topArtists[0] ?? null,
     heroImage,
-    // scrobbles & minutes intentionally undefined — Spotify has no such data.
+    // Estimated from recent plays (see estimateMinutes); the card asterisks it.
+    // scrobbles stays undefined — the API exposes no play counts at all.
+    minutes,
   }
 }
