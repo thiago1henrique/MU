@@ -502,6 +502,27 @@ export default function App() {
             </div>
           </div>
 
+          {/* Floating side-dock: a story-format phone mock that stays pinned in
+              the desktop margin while a video is loaded, so the clip stays
+              visible while the user scrubs the controls further down the page.
+              Hidden on narrow viewports (CSS) — there's no room beside the column. */}
+          {videoUrl && (
+            <aside className="video-dock" aria-hidden>
+              <span className="video-dock__label">Preview do vídeo</span>
+              <div className="video-dock__phone">
+                <div className="video-dock__scale">
+                  <RecapCard
+                    recap={recap}
+                    variant="story"
+                    quote={quote}
+                    quoteSong={quoteSong}
+                    {...videoProps}
+                  />
+                </div>
+              </div>
+            </aside>
+          )}
+
           <div className="export-bar">
             {videoUrl && !IS_FIREFOX ? (
               <>

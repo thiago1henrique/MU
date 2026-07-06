@@ -446,6 +446,70 @@
   }
 }
 
+/* ---- floating video dock (desktop-only live preview) ----
+   A story-format phone mock pinned in the left margin. It renders a second,
+   scaled RecapCard so the uploaded clip stays visible while the user scrolls
+   down to the clip controls. The story card is 1080×1920; the .video-dock__scale
+   wrapper is transformed by 260/1080 = 0.2407, and the phone box is sized to the
+   scaled result (1920 × 0.2407 ≈ 463px). Hidden until there's room beside the
+   640px column (needs ~320 + gap + 260 + margin per side). */
+.video-dock {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: max(24px, calc(50% - 320px - 32px - 260px));
+  transform: translateY(-50%);
+  width: 260px;
+  z-index: 30;
+  pointer-events: none;
+  text-align: center;
+  animation: dock-in 0.4s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@media (min-width: 1240px) {
+  .video-dock {
+    display: block;
+  }
+}
+.video-dock__label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+  margin-bottom: 12px;
+  margin-right: -0.22em;
+}
+.video-dock__phone {
+  width: 260px;
+  height: 463px;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  background: #000;
+}
+.video-dock__scale {
+  transform: scale(0.240740);
+  transform-origin: top left;
+}
+@keyframes dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .video-dock {
+    animation: none;
+  }
+}
+
 /* off-screen render targets for export (kept in DOM, out of view) */
 .offscreen {
   position: fixed;
