@@ -10,7 +10,7 @@ import { exportCardVideo, downloadBlob } from './lib/videoExport'
 import { RecapCard } from './components/RecapCard'
 import './App.css'
 
-const MAX_CLIP = 60
+const MAX_CLIP = 30
 
 // Login com Spotify está desativado por ora (app ainda em Development Mode no
 // dashboard do Spotify, sem Extended Quota Mode — só contas na allowlist passam).
@@ -115,6 +115,14 @@ export default function App() {
     : undefined
   const maxStart = Math.max(0, videoDur - clipLen)
   const start = Math.min(clipStart, maxStart)
+
+  // Side-dock mock geometry. The dock width is fixed so it stays anchored in the
+  // margin; only its height and the card scale change per format, and both ease
+  // (CSS) so Story↔Feed morphs smoothly. Story card = 1080×1920, Feed = 1600×900.
+  const DOCK_W = 260
+  const dockIsStory = previewFmt === 'story'
+  const dockScale = DOCK_W / (dockIsStory ? 1080 : 1600)
+  const dockH = Math.round((dockIsStory ? 1920 : 900) * dockScale)
 
   // On load, complete a Spotify OAuth redirect if we just came back from one.
   useEffect(() => {
@@ -508,12 +516,14 @@ export default function App() {
               Hidden on narrow viewports (CSS) — there's no room beside the column. */}
           {videoUrl && (
             <aside className="video-dock" aria-hidden>
-              <span className="video-dock__label">Preview do vídeo</span>
-              <div className="video-dock__phone">
-                <div className="video-dock__scale">
+              <span className="video-dock__label">
+                Preview do vídeo · {dockIsStory ? 'Story' : 'Feed'}
+              </span>
+              <div className="video-dock__phone" style={{ height: dockH }}>
+                <div className="video-dock__scale" style={{ transform: `scale(${dockScale})` }}>
                   <RecapCard
                     recap={recap}
-                    variant="story"
+                    variant={previewFmt}
                     quote={quote}
                     quoteSong={quoteSong}
                     {...videoProps}

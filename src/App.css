@@ -483,16 +483,20 @@
 }
 .video-dock__phone {
   width: 260px;
-  height: 463px;
+  /* height is set inline per format (Story 9:16 ↔ Feed 16:9); it eases so the
+     mock morphs smoothly when the format toggle flips. */
   overflow: hidden;
   border-radius: 22px;
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   background: #000;
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .video-dock__scale {
-  transform: scale(0.240740);
+  /* transform (scale) is set inline per format and eases in lockstep with the
+     frame height above, so the card resizes without a jump. */
   transform-origin: top left;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 @keyframes dock-in {
   from {
