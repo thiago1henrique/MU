@@ -26,6 +26,7 @@ const SCOPE = 'user-top-read'
 const LS = {
   clientId: 'spotify_client_id',
   verifier: 'spotify_pkce_verifier',
+  state: 'spotify_pkce_state',
   token: 'spotify_token',
 }
 
@@ -112,7 +113,11 @@ export async function login(): Promise<void> {
   if (!clientId) throw new SpotifyError('Client ID do Spotify não configurado.')
   const verifier = randomString(64)
   const challenge = base64url(await sha256(verifier))
+  // Opaque, single-use value echoed back by Spotify — lets us reject a redirect
+  // we didn't initiate (CSRF protection), on top of what PKCE already covers.
+  const state = randomString(16)
   localStorage.setItem(LS.verifier, verifier)
+  localStorage.setItem(LS.state, state)
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
@@ -120,6 +125,7 @@ export async function login(): Promise<void> {
     code_challenge_method: 'S256',
     code_challenge: challenge,
     redirect_uri: redirectUri(),
+    state,
   })
   window.location.assign(`${AUTH_URL}?${params.toString()}`)
 }
@@ -137,6 +143,8 @@ export async function handleRedirect(): Promise<boolean> {
   if (!code) {
     // Clean a leftover ?error=access_denied if the user cancelled.
     if (hadError) {
+      localStorage.removeItem(LS.state)
+      localStorage.removeItem(LS.verifier)
       url.searchParams.delete('error')
       url.searchParams.delete('state')
       window.history.replaceState({}, '', url.pathname + url.search)
@@ -144,6 +152,8 @@ export async function handleRedirect(): Promise<boolean> {
     return isConnected()
   }
 
+  const returnedState = url.searchParams.get('state')
+  const savedState = localStorage.getItem(LS.state)
   const verifier = localStorage.getItem(LS.verifier)
   const clientId = getClientId()
 
@@ -152,7 +162,14 @@ export async function handleRedirect(): Promise<boolean> {
   url.searchParams.delete('state')
   window.history.replaceState({}, '', url.pathname + url.search)
 
+  // Consume the one-time CSRF state and reject any mismatch (a redirect we
+  // didn't start). Missing saved state = same failure.
+  localStorage.removeItem(LS.state)
   if (!verifier || !clientId) return false
+  if (!savedState || returnedState !== savedState) {
+    localStorage.removeItem(LS.verifier)
+    return false
+  }
 
   const body = new URLSearchParams({
     grant_type: 'authorization_code',

@@ -119,13 +119,18 @@ export async function exportCardVideo(
   const canvas = document.createElement('canvas')
   canvas.width = canvasW
   canvas.height = canvasH
-  const ctx = canvas.getContext('2d')!
+  // `alpha: false` lets the compositor skip per-pixel blending against the page;
+  // the background gradient fills the whole canvas each frame anyway.
+  const ctx = canvas.getContext('2d', { alpha: false })!
 
+  // Background gradient is constant — build it once instead of allocating a new
+  // gradient object every frame (per-frame allocation pressures the GC and can
+  // cause the exact hitches we're trying to avoid).
+  const bgGradient = ctx.createLinearGradient(0, 0, canvasW * 0.4, canvasH)
+  bgGradient.addColorStop(0, '#17121f')
+  bgGradient.addColorStop(1, '#0d0b14')
   const drawBackground = () => {
-    const g = ctx.createLinearGradient(0, 0, canvasW * 0.4, canvasH)
-    g.addColorStop(0, '#17121f')
-    g.addColorStop(1, '#0d0b14')
-    ctx.fillStyle = g
+    ctx.fillStyle = bgGradient
     ctx.fillRect(0, 0, canvasW, canvasH)
   }
 
@@ -212,25 +217,57 @@ export async function exportCardVideo(
   })
   await video.play()
 
+  // Source crop is constant for the whole recording (video dimensions and the
+  // hero rect never change) — compute it once instead of per frame.
+  const { sx, sy, sw, sh } = coverCrop(video.videoWidth, video.videoHeight, hero.w, hero.h)
+
+  const composite = () => {
+    drawBackground()
+    // Draw the video into the offscreen buffer, then erase its trailing edge
+    // with the fade gradient so the background (already on ctx) shows through.
+    hctx.globalCompositeOperation = 'source-over'
+    hctx.clearRect(0, 0, hero.w, hero.h)
+    hctx.drawImage(video, sx, sy, sw, sh, 0, 0, hero.w, hero.h)
+    hctx.globalCompositeOperation = 'destination-out'
+    hctx.fillStyle = fadeMask
+    hctx.fillRect(0, 0, hero.w, hero.h)
+    ctx.drawImage(heroCanvas, hero.x, hero.y)
+    ctx.drawImage(overlay, 0, 0, canvasW, canvasH)
+  }
+
+  // Prefer requestVideoFrameCallback: it fires once per *decoded* video frame,
+  // so we composite exactly when there is new content (≈ the clip's native fps)
+  // instead of blindly at rAF's ~60Hz — that halved the wasted draws that were
+  // starving MediaRecorder on slower devices and dropping frames. Falls back to
+  // rAF where rVFC is unavailable (older Firefox).
+  interface RVFCVideo extends HTMLVideoElement {
+    requestVideoFrameCallback?: (cb: () => void) => number
+  }
+  const rvfc = (video as RVFCVideo).requestVideoFrameCallback?.bind(video)
+
   onStatus?.('Gravando… 0%')
   recorder.start()
   const startedAt = performance.now()
   let lastPct = -1
 
   await new Promise<void>((resolve) => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      clearTimeout(watchdog)
+      resolve()
+    }
+    // rVFC only fires on new decoded frames, so a stalled video would hang the
+    // loop forever. This wall-clock backstop guarantees we stop recording.
+    const watchdog = setTimeout(finish, (duration + 1) * 1000)
+    const schedule = () => {
+      if (rvfc) rvfc(frame)
+      else requestAnimationFrame(frame)
+    }
     const frame = () => {
-      drawBackground()
-      const { sx, sy, sw, sh } = coverCrop(video.videoWidth, video.videoHeight, hero.w, hero.h)
-      // Draw the video into the offscreen buffer, then erase its trailing edge
-      // with the fade gradient so the background (already on ctx) shows through.
-      hctx.globalCompositeOperation = 'source-over'
-      hctx.clearRect(0, 0, hero.w, hero.h)
-      hctx.drawImage(video, sx, sy, sw, sh, 0, 0, hero.w, hero.h)
-      hctx.globalCompositeOperation = 'destination-out'
-      hctx.fillStyle = fadeMask
-      hctx.fillRect(0, 0, hero.w, hero.h)
-      ctx.drawImage(heroCanvas, hero.x, hero.y)
-      ctx.drawImage(overlay, 0, 0, canvasW, canvasH)
+      if (done) return
+      composite()
 
       const elapsed = (performance.now() - startedAt) / 1000
       const pct = Math.min(100, Math.round((elapsed / duration) * 100))
@@ -239,36 +276,39 @@ export async function exportCardVideo(
         onStatus?.(`Gravando… ${pct}%`)
       }
       if (elapsed >= duration) {
-        resolve()
+        finish()
         return
       }
       // Loop the clip if it is shorter than the requested duration.
       if (video.currentTime >= start + duration || video.ended) video.currentTime = start
-      requestAnimationFrame(frame)
+      schedule()
     }
-    requestAnimationFrame(frame)
+    schedule()
   })
 
   recorder.stop()
   video.pause()
   const recording = await recorded
 
-  // Fast path: the browser already recorded MP4, so there is nothing to
-  // transcode — return it immediately (this skips the slow ffmpeg step).
-  if (recordedExt === 'mp4') {
-    onStatus?.('Pronto!')
-    return { blob: recording, ext: 'mp4' }
-  }
-
-  // Fallback: transcode the recorded WebM to MP4. If ffmpeg fails, fall back to
-  // the WebM so the export still produces a file.
+  // Always transcode through ffmpeg — even when the browser recorded MP4
+  // natively. MediaRecorder emits a *variable* frame rate (VFR), which some
+  // players/devices judder on during playback. Re-encoding to a constant 30fps
+  // (`-r`/`-fps_mode cfr`) is what makes the downloaded file play smoothly
+  // everywhere. If ffmpeg fails, fall back to the raw recording so the export
+  // still produces a usable file.
+  const inName = `in.${recordedExt}`
   try {
     onStatus?.('Convertendo para MP4…')
     const ff = await getFFmpeg(onStatus)
-    await ff.writeFile('in.webm', await fetchFile(recording))
+    await ff.writeFile(inName, await fetchFile(recording))
     await ff.exec([
       '-i',
-      'in.webm',
+      inName,
+      // Force constant frame rate — the whole point of the transcode.
+      '-r',
+      String(FPS),
+      '-fps_mode',
+      'cfr',
       '-c:v',
       'libx264',
       '-pix_fmt',
@@ -289,11 +329,12 @@ export async function exportCardVideo(
     // Copy into a plain ArrayBuffer-backed view so it is a valid BlobPart.
     const bytes = new Uint8Array(data.byteLength)
     bytes.set(data)
+    onStatus?.('Pronto!')
     return { blob: new Blob([bytes], { type: 'video/mp4' }), ext: 'mp4' }
   } catch (err) {
-    console.error('Conversão para MP4 falhou, salvando WebM:', err)
-    onStatus?.('Conversão MP4 falhou — salvando WebM…')
-    return { blob: recording, ext: 'webm' }
+    console.error('Conversão CFR falhou, salvando gravação original:', err)
+    onStatus?.('Conversão falhou — salvando arquivo original…')
+    return { blob: recording, ext: recordedExt }
   }
 }
 

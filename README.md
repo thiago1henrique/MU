@@ -23,11 +23,21 @@ pnpm dev
 
 ### Last.fm (API key)
 
-Crie uma chave em <https://www.last.fm/api/account/create>. Duas formas de usar:
+Crie uma chave em <https://www.last.fm/api/account/create>.
 
-1. **Na UI:** cole a chave no campo que aparece na tela (fica salva no navegador).
-2. **Via arquivo:** copie `.env.example` para `.env` e preencha
-   `VITE_LASTFM_API_KEY`.
+A chave fica **só no servidor**: as chamadas passam por uma função serverless
+(`api/lastfm.ts`) que injeta a chave, então ela **nunca vai para o bundle do
+navegador**. Configure-a como `LASTFM_API_KEY` (sem prefixo `VITE_`):
+
+- **Local:** copie `.env.example` para `.env` e preencha `LASTFM_API_KEY`. Como a
+  função `/api/*` só roda no runtime da Vercel, use **`vercel dev`** para testar
+  o Last.fm localmente (o `pnpm dev` puro não serve `/api`).
+- **Produção (Vercel):** cadastre `LASTFM_API_KEY` em
+  *Project Settings → Environment Variables*.
+
+> ⚠️ Variáveis com prefixo `VITE_` são **embutidas no bundle público** — não são
+> segredo. Por isso a chave do Last.fm usa `LASTFM_API_KEY` (servidor), enquanto
+> o Client ID do Spotify (público por design) usa `VITE_SPOTIFY_CLIENT_ID`.
 
 Depois é só informar o **usuário** do Last.fm e gerar.
 
@@ -56,7 +66,8 @@ Depois é só informar o **usuário** do Last.fm e gerar.
 
 ## Estrutura
 
-- `src/lib/lastfm.ts` — cliente da API do Last.fm + montagem do recap.
+- `api/lastfm.ts` — proxy serverless que injeta a `LASTFM_API_KEY` (server-side).
+- `src/lib/lastfm.ts` — cliente (chama `/api/lastfm`) + montagem do recap.
 - `src/lib/spotify.ts` — auth OAuth (PKCE) + montagem do recap do Spotify.
 - `src/lib/images.ts` — foto do artista (Deezer) e proxy de imagens.
 - `src/lib/exportPng.ts` — export com `html-to-image`.

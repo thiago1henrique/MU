@@ -1,7 +1,11 @@
 import type { ArtistStat, Period, Recap, TrackStat } from '../types'
 import { fetchArtistImage, fetchTrackCover, proxied, toDataUrl } from './images'
 
-const BASE = 'https://ws.audioscrobbler.com/2.0/'
+// Calls go through our own serverless proxy (api/lastfm.ts) so the Last.fm API
+// key stays server-side and never enters the client bundle. Requires the site
+// to be served by Vercel (or `vercel dev` locally); plain `vite dev` doesn't
+// serve /api.
+const BASE = '/api/lastfm'
 
 // Maps our UI period to Last.fm's period param and to a day window (used for
 // the exact scrobble count via user.getRecentTracks).
@@ -14,26 +18,19 @@ const PERIOD_MAP: Record<Period, { lfm: string; days: number }> = {
 
 const AVG_TRACK_SECONDS = 210 // fallback when Last.fm has no duration data
 
-/** Reads the API key from env, falling back to a value saved in the UI. */
-export function getApiKey(): string {
-  const fromEnv = import.meta.env.VITE_LASTFM_API_KEY as string | undefined
-  return fromEnv || localStorage.getItem('lastfm_api_key') || ''
-}
-
-export function setApiKey(key: string) {
-  localStorage.setItem('lastfm_api_key', key.trim())
-}
-
 class LastfmError extends Error {}
 
 async function call<T>(params: Record<string, string>): Promise<T> {
-  const key = getApiKey()
-  if (!key) throw new LastfmError('Chave da API do Last.fm não configurada.')
-
-  const qs = new URLSearchParams({ ...params, api_key: key, format: 'json' })
+  const qs = new URLSearchParams(params)
   const res = await fetch(`${BASE}?${qs.toString()}`)
   const data = await res.json()
-  if (data.error) throw new LastfmError(data.message || 'Erro na API do Last.fm.')
+  // Both Last.fm (`error` number + `message`) and our proxy (`error` string)
+  // report failures on the `error` field.
+  if (data.error) {
+    const msg =
+      data.message || (typeof data.error === 'string' ? data.error : 'Erro na API do Last.fm.')
+    throw new LastfmError(msg)
+  }
   if (!res.ok) throw new LastfmError(`Last.fm respondeu ${res.status}.`)
   return data as T
 }

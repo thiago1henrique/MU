@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, CSSProperties, FormEvent } from 'react'
 import type { Period, Recap, Source } from './types'
 import { periodLabel, SOURCE_PERIODS } from './types'
-import { fetchRecap, getApiKey, setApiKey } from './lib/lastfm'
+import { fetchRecap } from './lib/lastfm'
 import * as spotify from './lib/spotify'
 import { fetchLyricLines } from './lib/lyrics'
 import { downloadNodeAsPng } from './lib/exportPng'
@@ -44,7 +44,6 @@ export default function App() {
   // Which format the preview shows (also what the toggle above it drives). Both
   // formats are always exportable regardless of what's previewed.
   const [previewFmt, setPreviewFmt] = useState<'story' | 'feed'>('story')
-  const [apiKey, setApiKeyState] = useState(getApiKey())
   // Spotify auth state.
   const [spClientId, setSpClientId] = useState(spotify.getClientId())
   const [spConnected, setSpConnected] = useState(spotify.isConnected())
@@ -98,12 +97,11 @@ export default function App() {
   const overlayFeedRef = useRef<HTMLDivElement>(null)
   const exportVideoRef = useRef<HTMLVideoElement>(null)
 
-  const hasKey = apiKey.trim().length > 0
   const hasClientId = spClientId.trim().length > 0
   const periods = SOURCE_PERIODS[source]
-  // Ready to generate: Last.fm needs a username + API key; Spotify needs a
-  // connected account.
-  const ready = source === 'spotify' ? spConnected : hasKey && user.trim().length > 0
+  // Ready to generate: Last.fm needs a username (the API key lives server-side,
+  // behind the /api/lastfm proxy); Spotify needs a connected account.
+  const ready = source === 'spotify' ? spConnected : user.trim().length > 0
   const quoteTrack = recap?.topTracks[quoteSongIdx]
   // Citation shown under the lyric quote: "Song, Artist".
   const quoteSong = quoteTrack
@@ -267,11 +265,6 @@ export default function App() {
     }
   }
 
-  function saveKey() {
-    setApiKey(apiKey)
-    setApiKeyState(getApiKey())
-  }
-
   function changeSource(next: Source) {
     if (next === source) return
     setSource(next)
@@ -360,30 +353,6 @@ export default function App() {
           Spotify
         </button>
       </div>
-
-      {source === 'lastfm' && !hasKey && (
-        <div className="keybox">
-          <p className="keybox__hint">
-            Cole sua <strong>API key do Last.fm</strong> (crie em{' '}
-            <a href="https://www.last.fm/api/account/create" target="_blank" rel="noreferrer">
-              last.fm/api/account/create
-            </a>
-            ). Fica salva só no seu navegador.
-          </p>
-          <div className="keybox__row">
-            <input
-              className="input"
-              type="password"
-              placeholder="API key"
-              value={apiKey}
-              onChange={(e) => setApiKeyState(e.target.value)}
-            />
-            <button className="btn" onClick={saveKey} disabled={!apiKey.trim()}>
-              Salvar chave
-            </button>
-          </div>
-        </div>
-      )}
 
       {source === 'spotify' && !spConnected && (
         <div className="keybox">

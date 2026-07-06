@@ -325,6 +325,11 @@
   flex-wrap: wrap;
   margin: 20px 0 24px;
 }
+/* Equal-width export buttons: flex:1 with a shared basis makes them the same
+   size whether side by side or wrapped onto their own rows. */
+.export-bar .btn {
+  flex: 1 1 220px;
+}
 
 /* While exporting, the clicked button shows its progress inline: a brighter
    fill grows left→right to --progress, over the accent background. Text stays
