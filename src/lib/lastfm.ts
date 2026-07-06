@@ -23,7 +23,19 @@ class LastfmError extends Error {}
 async function call<T>(params: Record<string, string>): Promise<T> {
   const qs = new URLSearchParams(params)
   const res = await fetch(`${BASE}?${qs.toString()}`)
-  const data = await res.json()
+  const text = await res.text()
+  // The proxy always answers JSON. Anything else means /api/lastfm wasn't served
+  // (e.g. plain `vite dev` without the api plugin, or a broken deploy) and we got
+  // the SPA's index.html back — surface that instead of a cryptic JSON.parse error.
+  let data: (T & { error?: unknown; message?: string })
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new LastfmError(
+      'O proxy /api/lastfm não respondeu JSON (provavelmente não está sendo servido). ' +
+        'Rode o app com `vercel dev` ou verifique o deploy na Vercel.',
+    )
+  }
   // Both Last.fm (`error` number + `message`) and our proxy (`error` string)
   // report failures on the `error` field.
   if (data.error) {

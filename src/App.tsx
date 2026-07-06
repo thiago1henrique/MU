@@ -12,6 +12,12 @@ import './App.css'
 
 const MAX_CLIP = 60
 
+// Login com Spotify está desativado por ora (app ainda em Development Mode no
+// dashboard do Spotify, sem Extended Quota Mode — só contas na allowlist passam).
+// Todo o código do Spotify continua no lugar; basta voltar para `true` para
+// reexibir o seletor de fonte e o fluxo de conexão.
+const SHOW_SPOTIFY = false
+
 /** Seconds as a clock: 58 → "58s", 60 → "1:00", 81 → "1:21". */
 function clock(seconds: number): string {
   const total = Math.round(seconds)
@@ -36,8 +42,8 @@ const DIMS = {
 }
 
 export default function App() {
-  const [source, setSource] = useState<Source>(
-    () => (localStorage.getItem('recap_source') as Source) || 'lastfm',
+  const [source, setSource] = useState<Source>(() =>
+    SHOW_SPOTIFY ? (localStorage.getItem('recap_source') as Source) || 'lastfm' : 'lastfm',
   )
   const [user, setUser] = useState(() => localStorage.getItem('lastfm_user') ?? '')
   const [period, setPeriod] = useState<Period>('month')
@@ -333,6 +339,7 @@ export default function App() {
       </header>
 
       {/* Source selector: choose between Last.fm and Spotify. */}
+      {SHOW_SPOTIFY && (
       <div className="segmented segmented--source">
         <span
           className="segmented__slider"
@@ -353,8 +360,9 @@ export default function App() {
           Spotify
         </button>
       </div>
+      )}
 
-      {source === 'spotify' && !spConnected && (
+      {SHOW_SPOTIFY && source === 'spotify' && !spConnected && (
         <div className="keybox">
           {hasClientId ? (
             <>
@@ -397,7 +405,7 @@ export default function App() {
         </div>
       )}
 
-      {source === 'spotify' && spConnected && (
+      {SHOW_SPOTIFY && source === 'spotify' && spConnected && (
         <div className="keybox keybox--row">
           <span className="keybox__hint">✓ Conta do Spotify conectada.</span>
           <button className="btn" onClick={disconnectSpotify}>
