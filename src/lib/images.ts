@@ -99,6 +99,20 @@ export async function fetchTrackCover(
  */
 export function proxied(url: string | undefined, size?: number): string | undefined {
   if (!url) return undefined
+
+  // Spotify and Last.fm image CDNs natively support CORS and send Access-Control-Allow-Origin: *.
+  // Fetching them directly bypasses public proxies (like wsrv.nl), which are often blocked
+  // by ad-blockers, tracking protection, private DNS, and Incognito mode.
+  const hasNativeCors =
+    url.includes('scdn.co') ||
+    url.includes('spotifycdn.com') ||
+    url.includes('lastfm.freetls.fastly.net') ||
+    url.includes('fastly.net')
+
+  if (hasNativeCors) {
+    return url
+  }
+
   const sizeParam = size ? `&w=${size}&h=${size}&fit=cover` : ''
   return `https://wsrv.nl/?url=${encodeURIComponent(url)}${sizeParam}`
 }
