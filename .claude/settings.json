@@ -13,7 +13,9 @@
       "Bash(convert -background none -density 384 pwa-icon.svg -resize 180x180 apple-touch-icon.png)",
       "Bash(node gen.mjs)",
       "Bash(npm run *)",
-      "Bash(pkill -f msedge)"
+      "Bash(pkill -f msedge)",
+      "Bash(curl -s \"http://127.0.0.1:5199/api/deezer?type=artist&q=Radiohead\")",
+      "Read(//tmp/**)"
     ],
     "additionalDirectories": [
       "C:\\Users\\thiag\\AppData\\Local\\Temp\\claude\\d--Dev-Pessoal-Echo\\82dd5f53-108c-410b-9283-f0e28462d9cf\\scratchpad"
