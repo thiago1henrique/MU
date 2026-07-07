@@ -8,6 +8,7 @@ import { fetchLyricLines } from './lib/lyrics'
 import { downloadNodeAsPng } from './lib/exportPng'
 import { exportCardVideo, downloadBlob } from './lib/videoExport'
 import { RecapCard } from './components/RecapCard'
+import { TrackSelect } from './components/TrackSelect'
 import './App.css'
 
 const MAX_CLIP = 60
@@ -89,6 +90,11 @@ export default function App() {
   const [isWide, setIsWide] = useState(
     () => typeof window !== 'undefined' && window.matchMedia(WIDE_MQ).matches,
   )
+  // Viewport width, tracked so the Feed side-dock can grow to fill the left
+  // gutter on wide screens (see DOCK_W below) without overlapping the column.
+  const [winW, setWinW] = useState(
+    () => (typeof window !== 'undefined' ? window.innerWidth : 1440),
+  )
 
   // Preview scaling: the RecapCard renders at exact export px (1080×1920 story,
   // 1600×900 feed); we measure the frame's real width and scale the card down
@@ -127,11 +133,17 @@ export default function App() {
   const maxStart = Math.max(0, videoDur - clipLen)
   const start = Math.min(clipStart, maxStart)
 
-  // Side-dock mock geometry. The dock width is fixed so it stays anchored in the
-  // margin; only its height and the card scale change per format, and both ease
-  // (CSS) so Story↔Feed morphs smoothly. Story card = 1080×1920, Feed = 1600×900.
-  const DOCK_W = 320
+  // Side-dock mock geometry. Story stays a fixed 320px (it's tall — 9:16 — so a
+  // wider mock would overflow the viewport height). Feed is 16:9 and short, so
+  // it can grow to fill the left gutter on wide screens: we size it to the space
+  // between the viewport margin (24px) and the centered 640px column minus the
+  // 32px gap (half column = 320px), capped at 560px and floored at 320px. This
+  // keeps the same 32px gap to the column at every width, so it never overlaps.
+  // Only height and the card scale change per format, and both ease (CSS) so
+  // Story↔Feed morphs smoothly. Story card = 1080×1920, Feed = 1600×900.
   const dockIsStory = previewFmt === 'story'
+  const feedDockW = Math.min(560, Math.max(320, Math.floor(winW / 2 - 320 - 32 - 24)))
+  const DOCK_W = dockIsStory ? 320 : feedDockW
   const dockScale = DOCK_W / (dockIsStory ? 1080 : 1600)
   const dockH = Math.round((dockIsStory ? 1920 : 900) * dockScale)
 
@@ -145,8 +157,13 @@ export default function App() {
   useEffect(() => {
     const mq = window.matchMedia(WIDE_MQ)
     const onChange = () => setIsWide(mq.matches)
+    const onResize = () => setWinW(window.innerWidth)
     mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
+    window.addEventListener('resize', onResize)
+    return () => {
+      mq.removeEventListener('change', onChange)
+      window.removeEventListener('resize', onResize)
+    }
   }, [])
 
   // Fetch lyrics whenever the recap or the chosen song changes.
@@ -767,22 +784,14 @@ export default function App() {
               </p>
             </div>
 
-            <label className="encarte__field">
+            <div className="encarte__field">
               <span className="field__label">Faixa</span>
-              <div className="select-wrap">
-                <select
-                  className="select"
-                  value={quoteSongIdx}
-                  onChange={(e) => selectSong(Number(e.target.value))}
-                >
-                  {recap.topTracks.map((t, i) => (
-                    <option key={i} value={i}>
-                      {i + 1}. {t.name} — {t.artist}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </label>
+              <TrackSelect
+                tracks={recap.topTracks}
+                value={quoteSongIdx}
+                onChange={selectSong}
+              />
+            </div>
 
             {lyricsLoading && <p className="quote-editor__hint">Buscando letra…</p>}
             {lyricsError && <p className="error">{lyricsError}</p>}

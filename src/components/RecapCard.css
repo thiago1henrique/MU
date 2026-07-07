@@ -496,6 +496,7 @@ video.card__hero-img {
 .card--feed .card__quote-mark {
   font-size: 84px;
   height: 32px;
+  margin-top: 18px;
 }
 .card--feed .card__quote-lines {
   font-size: 30px;
