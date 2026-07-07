@@ -99,9 +99,8 @@ export async function fetchTrackCover(
  */
 export function proxied(url: string | undefined, size?: number): string | undefined {
   if (!url) return undefined
-  const bare = url.replace(/^https?:\/\//, '')
   const sizeParam = size ? `&w=${size}&h=${size}&fit=cover` : ''
-  return `https://wsrv.nl/?url=${encodeURIComponent(bare)}${sizeParam}`
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}${sizeParam}`
 }
 
 /**
