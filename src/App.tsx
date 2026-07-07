@@ -225,12 +225,16 @@ export default function App() {
     const q = lyricQuery.trim()
     if (selectedHit && lyricQuery === `${selectedHit.title} — ${selectedHit.artist}`) return
     if (q.length < 2) {
-      setLyricHits([])
-      setSearching(false)
-      return
+      const handle = setTimeout(() => {
+        setLyricHits([])
+        setSearching(false)
+      }, 0)
+      return () => clearTimeout(handle)
     }
     let active = true
-    setSearching(true)
+    const hSearch = setTimeout(() => {
+      setSearching(true)
+    }, 0)
     const t = setTimeout(async () => {
       try {
         const hits = await searchTracks(q)
@@ -243,6 +247,7 @@ export default function App() {
     }, 300)
     return () => {
       active = false
+      clearTimeout(hSearch)
       clearTimeout(t)
     }
   }, [lyricQuery, appMode, selectedHit])
@@ -311,7 +316,12 @@ export default function App() {
   function toggleLine(i: number) {
     const next = selected.includes(i) ? selected.filter((x) => x !== i) : [...selected, i]
     setSelected(next)
-    setQuote([...next].sort((a, b) => a - b).map((idx) => lyricLines[idx]).join('\n'))
+    setQuote(
+      [...next]
+        .sort((a, b) => a - b)
+        .map((idx) => lyricLines[idx])
+        .join('\n'),
+    )
     // With a video loaded, the animation anchors to the *earliest* marked line:
     // that line shows at the clip start, and the following lines roll in as the
     // clip plays. Anchoring to the earliest (not the last clicked) keeps the
@@ -376,7 +386,7 @@ export default function App() {
   /** Renders the right card for the current mode with the given role/format. */
   function renderCard(
     variant: 'story' | 'feed',
-    o: { mode?: 'normal' | 'overlay'; live?: boolean; offscreen?: boolean; ref?: Ref<HTMLDivElement> } = {},
+    o: { mode?: 'normal' | 'overlay'; live?: boolean; offscreen?: boolean; isImageExport?: boolean; ref?: Ref<HTMLDivElement> } = {},
   ) {
     if (appMode === 'lyric') {
       return (
@@ -393,6 +403,7 @@ export default function App() {
           live={o.live}
           mode={o.mode}
           paused={o.offscreen}
+          isImageExport={o.isImageExport}
           {...(videoUrl
             ? { videoUrl, videoStart: start, videoDuration: clipLen }
             : {})}
@@ -847,10 +858,10 @@ export default function App() {
             {videoUrl && !IS_FIREFOX ? (
               <>
                 <button {...exportBtnProps('story')} onClick={() => handleVideoExport('story')}>
-                  {exporting === 'story' ? exportLabel : 'MP4 Story · 1080×1920'}
+                  {exporting === 'story' ? exportLabel : 'Instagram Story'}
                 </button>
                 <button {...exportBtnProps('feed')} onClick={() => handleVideoExport('feed')}>
-                  {exporting === 'feed' ? exportLabel : 'MP4 Feed · 1600×900'}
+                  {exporting === 'feed' ? exportLabel : 'X - (Twitter)'}
                 </button>
               </>
             ) : (
@@ -862,14 +873,14 @@ export default function App() {
                       disabled
                       title="Exportar vídeo não é suportado no Firefox. Use Chrome, Edge ou Safari."
                     >
-                      MP4 Story · indisponível
+                      Instagram Story · indisponível
                     </button>
                     <button
                       className="btn btn--primary"
                       disabled
                       title="Exportar vídeo não é suportado no Firefox. Use Chrome, Edge ou Safari."
                     >
-                      MP4 Feed · indisponível
+                      X - (Twitter) · indisponível
                     </button>
                   </>
                 )}
@@ -1133,10 +1144,10 @@ export default function App() {
       {/* Off-screen render targets (kept in DOM, out of view). */}
       {showCard && (
         <div className="offscreen" aria-hidden>
-          {renderCard('story', { ref: storyRef, offscreen: true })}
-          {renderCard('feed', { ref: feedRef, offscreen: true })}
-          {renderCard('story', { mode: 'overlay', ref: overlayStoryRef, offscreen: true })}
-          {renderCard('feed', { mode: 'overlay', ref: overlayFeedRef, offscreen: true })}
+          {renderCard('story', { ref: storyRef, offscreen: true, isImageExport: true })}
+          {renderCard('feed', { ref: feedRef, offscreen: true, isImageExport: true })}
+          {renderCard('story', { mode: 'overlay', ref: overlayStoryRef, offscreen: true, isImageExport: true })}
+          {renderCard('feed', { mode: 'overlay', ref: overlayFeedRef, offscreen: true, isImageExport: true })}
           {videoUrl && (
             <video ref={exportVideoRef} src={videoUrl} muted playsInline preload="auto" />
           )}

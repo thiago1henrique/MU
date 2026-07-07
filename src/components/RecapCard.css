@@ -185,18 +185,28 @@ video.card__hero-img {
   color: var(--c-accent);
   font-family: Georgia, 'Times New Roman', serif;
   line-height: 0.5;
+  align-self: flex-start;
 }
 .card__quote-lines {
-  white-space: pre-line;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
   font-style: italic;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.35;
   color: var(--c-text);
+  text-align: left;
+  align-self: stretch;
+}
+.card__quote-line {
+  display: block;
+  min-height: 1.2em;
 }
 .card__quote-cite {
   font-style: normal;
   font-weight: 600;
   color: var(--c-muted);
+  align-self: flex-start;
 }
 .card__quote-cite::before {
   content: '— ';
@@ -379,6 +389,15 @@ video.card__hero-img {
   height: calc(1920px - 1485px);
   padding: 60px;
 }
+/* Static image hero (no video): shrink the art box to a compact band and give
+   the body the reclaimed height. A loaded clip (.card--has-video) keeps the
+   full-bleed hero above. */
+.card--story:not(.card--has-video) .card__hero {
+  height: 770px;
+}
+.card--story:not(.card--has-video) .card__body {
+  height: calc(1920px - 770px);
+}
 .card--story .card__list-title {
   font-size: 26px;
 }
@@ -408,7 +427,7 @@ video.card__hero-img {
   height: 46px;
 }
 .card--story .card__quote-lines {
-  font-size: 72px;
+  font-size: 3rem;
 }
 .card--story .card__quote-cite {
   font-size: 26px;
@@ -499,7 +518,7 @@ video.card__hero-img {
   margin-top: 18px;
 }
 .card--feed .card__quote-lines {
-  font-size: 40px;
+  font-size: 3rem;
 }
 .card--feed .card__quote-cite {
   font-size: 22px;

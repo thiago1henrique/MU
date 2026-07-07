@@ -73,6 +73,7 @@ export interface VideoExportOpts {
 interface PreparedLyric {
   images: HTMLImageElement[]
   lines: SyncedLine[]
+  shifts: number[]
   rect: Rect
   offset: number
 }
@@ -146,7 +147,7 @@ async function prepareLyricFrames(
 
   const slicedLines = lyric.lines.slice(firstActiveIdx, endIdx + 1)
   if (slicedLines.length === 0) {
-    return { images: [], lines: [], rect, offset: lyric.offset }
+    return { images: [], lines: [], shifts: [], rect, offset: lyric.offset }
   }
 
   // Offscreen render node: a lyric box fixed to the measured size, wrapped in the
@@ -158,6 +159,17 @@ async function prepareLyricFrames(
   const wrap = document.createElement('div')
   wrap.className = `card card--${lyric.variant} card--lyric`
   wrap.style.cssText = `position:fixed;left:-99999px;top:0;display:block;width:${rect.w}px;`
+  
+  // Disable transitions and animations during pre-rendering to prevent any timing or interpolation issues.
+  const styleEl = document.createElement('style')
+  styleEl.textContent = `
+    .card__lyric-track, .card__lyric-line {
+      transition: none !important;
+      animation: none !important;
+    }
+  `
+  wrap.appendChild(styleEl)
+
   const renderBox = document.createElement('div')
   renderBox.className = 'card__lyric'
   renderBox.style.width = `${rect.w}px`
@@ -168,28 +180,59 @@ async function prepareLyricFrames(
 
   try {
     const images: HTMLImageElement[] = []
-    // Pre-render a rolling list of 5 lines centered on each active index,
-    // mimicking the LiveLyrics component rendering perfectly (including blurred neighbors)!
+    const shifts: number[] = []
+    // Pre-render each active line in the full context of slicedLines
+    // so offsetTop values grow linearly and scrolling calculations are accurate!
     for (let idx = 0; idx < slicedLines.length; idx++) {
       // Clear previous elements in the render box
       renderBox.innerHTML = ''
 
-      // Compute rolling window [from, to) centered on current idx
-      const from = Math.max(0, idx - 2)
-      const to = Math.min(slicedLines.length, idx + 3)
+      // Re-create the track container to mimic the LiveLyrics structure and styles perfectly
+      const trackEl = document.createElement('div')
+      trackEl.className = 'card__lyric-track'
+      renderBox.appendChild(trackEl)
 
-      for (let i = from; i < to; i++) {
+      let centerEl: HTMLSpanElement | null = null
+
+      for (let i = 0; i < slicedLines.length; i++) {
         const line = slicedLines[i]
         const lineEl = document.createElement('span')
         lineEl.className = `card__lyric-line ${i === idx ? 'is-active' : ''}`
+        
+        // Calculate distance from currently active index (idx)
+        const dist = Math.abs(i - idx)
+        lineEl.setAttribute('data-dist', dist.toString())
         lineEl.textContent = line.text
-        renderBox.appendChild(lineEl)
+
+        // Hide lines outside RADIUS = 1 window to match LiveLyrics behavior while preserving layout spacing
+        if (dist > 1) {
+          lineEl.style.opacity = '0'
+          lineEl.style.pointerEvents = 'none'
+        }
+        
+        trackEl.appendChild(lineEl)
+
+        if (i === idx) {
+          centerEl = lineEl
+        }
       }
+
+      // Read offsetTop and offsetHeight of centerEl to force a reflow,
+      // and translate trackEl UP so centerEl's center is perfectly aligned at 50% height
+      let lineShift = 0
+      if (centerEl) {
+        const offsetTop = centerEl.offsetTop
+        const offsetHeight = centerEl.offsetHeight
+        const shift = -(offsetTop + offsetHeight / 2)
+        trackEl.style.transform = `translateY(${shift}px)`
+        lineShift = shift
+      }
+      shifts.push(lineShift)
 
       const url = await toPng(renderBox, { pixelRatio: 1, cacheBust: true })
       images.push(await loadImage(url))
     }
-    return { images, lines: slicedLines, rect, offset: lyric.offset }
+    return { images, lines: slicedLines, shifts, rect, offset: lyric.offset }
   } finally {
     document.body.removeChild(wrap)
   }
@@ -307,14 +350,36 @@ function buildCompositor(
           const prevIdx = idx - 1
 
           const origAlpha = ctx.globalAlpha
-          // Fade out the previous line if it exists
+          // Calculate the physical scroll offset in pixels between the previous and current line
+          const prevShift = prevIdx >= 0 && lyric.shifts ? lyric.shifts[prevIdx] : 0
+          const currShift = lyric.shifts ? lyric.shifts[idx] : 0
+          const scrollOffset = currShift - prevShift
+
+          // Clip the drawing context to the bounding box of the lyric container
+          // to prevent any overflowing scrolled text from rendering on top of the footer.
+          ctx.save()
+          ctx.beginPath()
+          ctx.rect(lyric.rect.x, lyric.rect.y, lyric.rect.w, lyric.rect.h)
+          ctx.clip()
+
+          // Fade out the previous line and scroll it upwards
           if (prevIdx >= 0) {
             ctx.globalAlpha = origAlpha * (1 - eased)
-            ctx.drawImage(lyric.images[prevIdx], lyric.rect.x, lyric.rect.y)
+            ctx.drawImage(
+              lyric.images[prevIdx],
+              lyric.rect.x,
+              lyric.rect.y + eased * scrollOffset
+            )
           }
-          // Fade in the current line
+          // Fade in the current line and scroll it from downwards into the center
           ctx.globalAlpha = origAlpha * eased
-          ctx.drawImage(lyric.images[idx], lyric.rect.x, lyric.rect.y)
+          ctx.drawImage(
+            lyric.images[idx],
+            lyric.rect.x,
+            lyric.rect.y + (eased - 1) * scrollOffset
+          )
+          
+          ctx.restore()
           ctx.globalAlpha = origAlpha
         } else {
           // Beyond the transition window, draw normally

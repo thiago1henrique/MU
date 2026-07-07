@@ -31,6 +31,7 @@
    empty slot the video compositor draws the active line into, so its box must be
    the same size whether it shows text or not. */
 .card__lyric {
+  position: relative;
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -40,10 +41,40 @@
   justify-content: center;
   text-align: left;
   overflow: hidden;
+  /* Soft fade at the top and bottom so the outer lines dissolve into the card
+     instead of being cut sharply at the overflow edge. */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 22%,
+    #000 78%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 22%,
+    #000 78%,
+    transparent 100%
+  );
 }
 .card__lyric-slot {
   width: 100%;
   height: 100%;
+}
+/* Inner list pinned with its top at the container centre; LiveLyrics translates
+   it up by the current line's centre offset so that line always sits on 50%.
+   The transition makes lines scroll smoothly. */
+.card__lyric-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  will-change: transform;
+  transition: transform 0.55s cubic-bezier(0.37, 0, 0.63, 1);
 }
 .card__lyric-line {
   font-family: var(--c-display);
@@ -60,6 +91,16 @@
               filter 0.55s cubic-bezier(0.37, 0, 0.63, 1),
               transform 0.55s cubic-bezier(0.37, 0, 0.63, 1);
 }
+/* Neighbours fade out with distance from the active line: the immediate prev/next
+   line stays a touch readable, the outer ones melt into the background. */
+.card__lyric-line[data-dist='1'] {
+  opacity: 0.4;
+  filter: blur(1.5px);
+}
+.card__lyric-line[data-dist='2'] {
+  opacity: 0.14;
+  filter: blur(4px);
+}
 .card__lyric-line.is-active {
   color: var(--c-text);
   opacity: 1;
@@ -67,6 +108,8 @@
   transform: translateY(0) scale(1.04);
 }
 .card__lyric-cite {
+  position: relative;
+  z-index: 99;
   flex: none;
   font-family: var(--c-mono);
   color: var(--c-accent);
@@ -89,8 +132,12 @@
   font-size: 32px;
 }
 .card--story .card__lyric {
-  gap: 26px;
   padding: 20px 80px 20px 10px;
+}
+.card--story .card__lyric-track {
+  gap: 26px;
+  /* Same horizontal insets the container padding gave before it went absolute. */
+  padding: 0 80px 0 10px;
 }
 .card--story .card__lyric-line {
   font-size: 54px;
@@ -112,8 +159,11 @@
   font-size: 26px;
 }
 .card--feed .card__lyric {
-  gap: 16px;
   padding: 10px 50px 10px 10px;
+}
+.card--feed .card__lyric-track {
+  gap: 16px;
+  padding: 0 50px 0 10px;
 }
 .card--feed .card__lyric-line {
   font-size: 34px;
@@ -136,4 +186,28 @@
 .card--lyric .card__hero-plays {
   font-size: 3rem;
   line-height: 3.9rem;
+}
+
+/* Dynamic sizing for Lyric Card in Story format without video:
+   Start with the full-height hero (same as video), but let the hero shrink
+   to accommodate the lyrics as the text body grows. */
+.card--story.card--lyric:not(.card--has-video) {
+  display: flex;
+  flex-direction: column;
+}
+.card--story.card--lyric:not(.card--has-video) .card__hero {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.card--story.card--lyric:not(.card--has-video) .card__body {
+  flex: none;
+  height: auto;
+  min-height: 435px;
+}
+
+/* Disable top/bottom fade effect for static lyric quotes to keep the quote mark and verses fully visible. */
+.card--lyric-static .card__lyric {
+  -webkit-mask-image: none;
+  mask-image: none;
 }

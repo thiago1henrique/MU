@@ -118,7 +118,13 @@ export const RecapCard = forwardRef<HTMLDivElement, Props>(
           {quote && (
             <blockquote className="card__quote-text">
               <span className="card__quote-mark">“</span>
-              <span className="card__quote-lines">{quote}</span>
+              <span className="card__quote-lines">
+                {quote.split('\n').map((line, idx) => (
+                  <span key={idx} className="card__quote-line">
+                    {line || '\u00A0'}
+                  </span>
+                ))}
+              </span>
               {quoteSong && <cite className="card__quote-cite">{quoteSong}</cite>}
             </blockquote>
           )}
