@@ -386,7 +386,7 @@ export default function App() {
   /** Renders the right card for the current mode with the given role/format. */
   function renderCard(
     variant: 'story' | 'feed',
-    o: { mode?: 'normal' | 'overlay'; live?: boolean; offscreen?: boolean; isImageExport?: boolean; ref?: Ref<HTMLDivElement> } = {},
+    o: { mode?: 'normal' | 'overlay'; live?: boolean; offscreen?: boolean; ref?: Ref<HTMLDivElement> } = {},
   ) {
     if (appMode === 'lyric') {
       return (
@@ -403,7 +403,6 @@ export default function App() {
           live={o.live}
           mode={o.mode}
           paused={o.offscreen}
-          isImageExport={o.isImageExport}
           {...(videoUrl
             ? { videoUrl, videoStart: start, videoDuration: clipLen }
             : {})}
@@ -1144,10 +1143,10 @@ export default function App() {
       {/* Off-screen render targets (kept in DOM, out of view). */}
       {showCard && (
         <div className="offscreen" aria-hidden>
-          {renderCard('story', { ref: storyRef, offscreen: true, isImageExport: true })}
-          {renderCard('feed', { ref: feedRef, offscreen: true, isImageExport: true })}
-          {renderCard('story', { mode: 'overlay', ref: overlayStoryRef, offscreen: true, isImageExport: true })}
-          {renderCard('feed', { mode: 'overlay', ref: overlayFeedRef, offscreen: true, isImageExport: true })}
+          {renderCard('story', { ref: storyRef, offscreen: true })}
+          {renderCard('feed', { ref: feedRef, offscreen: true })}
+          {renderCard('story', { mode: 'overlay', ref: overlayStoryRef, offscreen: true })}
+          {renderCard('feed', { mode: 'overlay', ref: overlayFeedRef, offscreen: true })}
           {videoUrl && (
             <video ref={exportVideoRef} src={videoUrl} muted playsInline preload="auto" />
           )}

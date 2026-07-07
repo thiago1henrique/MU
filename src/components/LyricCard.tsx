@@ -43,8 +43,6 @@ interface Props {
   mode?: 'normal' | 'overlay'
   /** Whether the hero video should be paused (disable playback & CPU usage off-screen). */
   paused?: boolean
-  /** Whether the card is being rendered for image export. */
-  isImageExport?: boolean
 }
 
 /** Rolling window of lyric lines centered on the active one (preview only). */
@@ -138,24 +136,11 @@ export const LyricCard = forwardRef<HTMLDivElement, Props>(function LyricCard(
     live = false,
     mode = 'normal',
     paused = false,
-    isImageExport = false,
   },
   ref,
 ) {
   const overlay = mode === 'overlay'
   const showLive = live && !!videoUrl && syncedLines.length > 0
-
-  const formattedQuote =
-    isImageExport && quote
-      ? quote
-          .split('\n')
-          .map((line) => {
-            const trimmed = line.trim()
-            if (!trimmed) return line
-            return trimmed.startsWith('--') ? line : `-- ${line}`
-          })
-          .join('\n')
-      : quote
 
   // Active line, updated as the clip plays. Kept as an index in state (not the
   // raw time) so the card only re-renders when the highlighted line changes.
@@ -178,7 +163,7 @@ export const LyricCard = forwardRef<HTMLDivElement, Props>(function LyricCard(
       ref={ref}
       className={`card card--${variant} card--lyric ${overlay ? 'card--overlay' : ''} ${
         videoUrl ? 'card--has-video' : ''
-      } ${!showLive && formattedQuote ? 'card--lyric-static' : ''}`}
+      } ${!showLive && quote ? 'card--lyric-static' : ''}`}
     >
       <div className="card__hero">
         {overlay ? null : videoUrl ? (
@@ -222,11 +207,11 @@ export const LyricCard = forwardRef<HTMLDivElement, Props>(function LyricCard(
             <div className="card__lyric-slot" />
           ) : showLive ? (
             <LiveLyrics lines={syncedLines} activeIdx={activeIdx} />
-          ) : formattedQuote ? (
+          ) : quote ? (
             <blockquote className="card__quote-text">
               <span className="card__quote-mark">“</span>
               <span className="card__quote-lines">
-                {formattedQuote.split('\n').map((line, idx) => (
+                {quote.split('\n').map((line, idx) => (
                   <span key={idx} className="card__quote-line">
                     {line || '\u00A0'}
                   </span>
