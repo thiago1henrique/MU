@@ -1,0 +1,122 @@
+.install-banner {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 9999;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 500px;
+  margin: 0 auto;
+  text-align: left;
+  animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%) translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.install-banner__content {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.install-banner__icon {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 10px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.install-banner__text {
+  flex-grow: 1;
+}
+
+.install-banner__title {
+  margin: 0 0 4px;
+  font-family: var(--heading);
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-h);
+  line-height: 1.2;
+}
+
+.install-banner__desc {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.install-banner__inline-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+.install-banner__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.install-banner__btn {
+  padding: 8px 16px !important;
+  font-size: 12px !important;
+  height: auto !important;
+}
+
+.install-banner__close {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.install-banner__close:hover {
+  background-color: var(--border);
+  color: var(--text-h);
+}
+
+/* Adjust layout on slightly larger mobile devices and desktop */
+@media (min-width: 480px) {
+  .install-banner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+  }
+
+  .install-banner__content {
+    flex-grow: 1;
+    align-items: center;
+  }
+
+  .install-banner__actions {
+    flex-shrink: 0;
+  }
+}

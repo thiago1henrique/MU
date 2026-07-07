@@ -25,7 +25,8 @@
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); s=d.get\\('syncedLyrics'\\) or ''; print\\('HAS syncedLyrics:', bool\\(s\\)\\); print\\('first 200 chars:'\\); print\\(s[:200]\\)\")",
       "Bash(node -e ' *)",
       "Bash(curl -s \"http://127.0.0.1:5173/api/lyrics?artist=Queen&track=Bohemian%20Rhapsody\")",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://127.0.0.1:5173/api/lyrics?artist=Queen&track=Bohemian%20Rhapsody\")"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://127.0.0.1:5173/api/lyrics?artist=Queen&track=Bohemian%20Rhapsody\")",
+      "Bash(git restore *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\thiag\\AppData\\Local\\Temp\\claude\\d--Dev-Pessoal-Echo\\82dd5f53-108c-410b-9283-f0e28462d9cf\\scratchpad"

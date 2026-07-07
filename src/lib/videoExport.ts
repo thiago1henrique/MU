@@ -163,16 +163,29 @@ async function prepareLyricFrames(
   renderBox.style.width = `${rect.w}px`
   renderBox.style.height = `${rect.h}px`
   renderBox.style.flex = 'none'
-  const lineEl = document.createElement('span')
-  lineEl.className = 'card__lyric-line is-active'
-  renderBox.appendChild(lineEl)
   wrap.appendChild(renderBox)
   document.body.appendChild(wrap)
 
   try {
     const images: HTMLImageElement[] = []
-    for (const line of slicedLines) {
-      lineEl.textContent = line.text
+    // Pre-render a rolling list of 5 lines centered on each active index,
+    // mimicking the LiveLyrics component rendering perfectly (including blurred neighbors)!
+    for (let idx = 0; idx < slicedLines.length; idx++) {
+      // Clear previous elements in the render box
+      renderBox.innerHTML = ''
+
+      // Compute rolling window [from, to) centered on current idx
+      const from = Math.max(0, idx - 2)
+      const to = Math.min(slicedLines.length, idx + 3)
+
+      for (let i = from; i < to; i++) {
+        const line = slicedLines[i]
+        const lineEl = document.createElement('span')
+        lineEl.className = `card__lyric-line ${i === idx ? 'is-active' : ''}`
+        lineEl.textContent = line.text
+        renderBox.appendChild(lineEl)
+      }
+
       const url = await toPng(renderBox, { pixelRatio: 1, cacheBust: true })
       images.push(await loadImage(url))
     }
@@ -281,7 +294,33 @@ function buildCompositor(
       const songTime = mediaTime - clipStart + lyric.offset
       const idx = activeLineIndex(lyric.lines, songTime)
       lastLyricIdx = idx
-      if (idx >= 0) ctx.drawImage(lyric.images[idx], lyric.rect.x, lyric.rect.y)
+
+      if (idx >= 0) {
+        const line = lyric.lines[idx]
+        const transitionDur = 0.35 // 350ms transition between verses
+        const timeSinceLineStart = songTime - line.t
+
+        if (timeSinceLineStart < transitionDur && timeSinceLineStart >= 0) {
+          const progress = timeSinceLineStart / transitionDur
+          // Apply trigonometric Cosine Ease-In-Out for a highly organic, ultra-smooth transition
+          const eased = (1 - Math.cos(progress * Math.PI)) / 2
+          const prevIdx = idx - 1
+
+          const origAlpha = ctx.globalAlpha
+          // Fade out the previous line if it exists
+          if (prevIdx >= 0) {
+            ctx.globalAlpha = origAlpha * (1 - eased)
+            ctx.drawImage(lyric.images[prevIdx], lyric.rect.x, lyric.rect.y)
+          }
+          // Fade in the current line
+          ctx.globalAlpha = origAlpha * eased
+          ctx.drawImage(lyric.images[idx], lyric.rect.x, lyric.rect.y)
+          ctx.globalAlpha = origAlpha
+        } else {
+          // Beyond the transition window, draw normally
+          ctx.drawImage(lyric.images[idx], lyric.rect.x, lyric.rect.y)
+        }
+      }
     } else if (lyric && lastLyricIdx >= 0) {
       // No fresh mediaTime this frame — keep showing the last active line.
       ctx.drawImage(lyric.images[lastLyricIdx], lyric.rect.x, lyric.rect.y)

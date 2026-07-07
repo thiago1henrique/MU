@@ -36,9 +36,9 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  text-align: center;
+  text-align: left;
   overflow: hidden;
 }
 .card__lyric-slot {
@@ -50,22 +50,31 @@
   font-weight: 700;
   line-height: 1.22;
   color: var(--c-muted);
-  opacity: 0.4;
-  overflow-wrap: anywhere;
-  transition: opacity 0.25s ease, color 0.25s ease;
+  opacity: 0.25;
+  overflow-wrap: break-word;
+  transform: translateY(6px) scale(0.96);
+  transform-origin: left center;
+  filter: blur(2.5px);
+  transition: opacity 0.55s cubic-bezier(0.37, 0, 0.63, 1),
+              color 0.55s cubic-bezier(0.37, 0, 0.63, 1),
+              filter 0.55s cubic-bezier(0.37, 0, 0.63, 1),
+              transform 0.55s cubic-bezier(0.37, 0, 0.63, 1);
 }
 .card__lyric-line.is-active {
   color: var(--c-text);
   opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1.04);
 }
 .card__lyric-cite {
   flex: none;
   font-family: var(--c-mono);
   color: var(--c-accent);
-  text-align: center;
+  text-align: left;
   text-transform: uppercase;
   letter-spacing: 1px;
   font-weight: 700;
+  padding-left: 10px;
 }
 
 /* =================== STORY (1080 × 1920) =================== */
@@ -81,10 +90,10 @@
 }
 .card--story .card__lyric {
   gap: 26px;
-  padding: 20px 10px;
+  padding: 20px 80px 20px 10px;
 }
 .card--story .card__lyric-line {
-  font-size: 46px;
+  font-size: 54px;
 }
 .card--story .card__lyric-cite {
   margin-top: 30px;
@@ -104,7 +113,7 @@
 }
 .card--feed .card__lyric {
   gap: 16px;
-  padding: 10px;
+  padding: 10px 50px 10px 10px;
 }
 .card--feed .card__lyric-line {
   font-size: 34px;
@@ -112,4 +121,19 @@
 .card--feed .card__lyric-cite {
   margin-top: 20px;
   font-size: 22px;
+}
+
+/* =================== CUSTOM HERO TEXT STYLES =================== */
+.card--lyric .card__eyebrow {
+  font-size: 1.2rem;
+  line-height: 1.56rem;
+}
+.card--lyric .card__hero-name {
+  font-size: 5rem;
+  line-height: 6.5rem;
+  margin-left: -0.05em;
+}
+.card--lyric .card__hero-plays {
+  font-size: 3rem;
+  line-height: 3.9rem;
 }

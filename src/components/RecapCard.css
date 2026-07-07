@@ -358,7 +358,7 @@ video.card__hero-img {
   font-size: 26px;
 }
 .card--story .card__hero {
-  height: 620px;
+  height: 1485px;
 }
 .card--story .card__hero-text {
   padding: 60px;
@@ -376,7 +376,7 @@ video.card__hero-img {
   font-size: 28px;
 }
 .card--story .card__body {
-  height: calc(1920px - 620px);
+  height: calc(1920px - 1485px);
   padding: 60px;
 }
 .card--story .card__list-title {

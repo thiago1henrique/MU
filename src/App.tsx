@@ -13,6 +13,7 @@ import { exportCardVideo, downloadBlob } from './lib/videoExport'
 import { RecapCard } from './components/RecapCard'
 import { LyricCard } from './components/LyricCard'
 import { TrackSelect } from './components/TrackSelect'
+import { InstallPrompt } from './components/InstallPrompt'
 import './App.css'
 
 type AppMode = 'recap' | 'lyric'
@@ -49,7 +50,7 @@ const IS_FIREFOX =
 
 // Hero rectangles per format (must match RecapCard.css hero sizes).
 const DIMS = {
-  story: { canvasW: 1080, canvasH: 1920, hero: { x: 0, y: 0, w: 1080, h: 620 } },
+  story: { canvasW: 1080, canvasH: 1920, hero: { x: 0, y: 0, w: 1080, h: 1485 } },
   feed: { canvasW: 1600, canvasH: 900, hero: { x: 0, y: 0, w: 620, h: 900 } },
 }
 
@@ -384,6 +385,7 @@ export default function App() {
           variant={variant}
           title={selectedHit?.title ?? ''}
           artist={selectedHit?.artist ?? ''}
+          album={selectedHit?.album ?? ''}
           cover={coverUrl}
           syncedLines={syncedLines}
           lyricOffset={lyricOffset + lyricNudge}
@@ -1162,6 +1164,7 @@ export default function App() {
         </a>
       </footer>
     )}
+    <InstallPrompt />
     </>
   )
 }

@@ -12,6 +12,8 @@ interface Props {
   title: string
   /** Artist name, shown in the hero. */
   artist: string
+  /** Album name, shown as the eyebrow in the hero. */
+  album?: string
   /** Album cover URL (hero background when no video is uploaded). */
   cover?: string
   /** Object URL of an uploaded video to show in the hero. */
@@ -82,6 +84,7 @@ export const LyricCard = forwardRef<HTMLDivElement, Props>(function LyricCard(
     variant,
     title,
     artist,
+    album,
     cover,
     videoUrl,
     videoStart = 0,
@@ -150,7 +153,7 @@ export const LyricCard = forwardRef<HTMLDivElement, Props>(function LyricCard(
           <span className="card__brand-name">echo</span>
         </div>
         <div className="card__hero-text">
-          <span className="card__eyebrow">Letra</span>
+          <span className="card__eyebrow">{album || 'Letra'}</span>
           <span className="card__hero-name">{title || '—'}</span>
           {artist && <span className="card__hero-plays">{artist}</span>}
         </div>
