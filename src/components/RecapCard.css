@@ -492,7 +492,7 @@ video.card__hero-img {
 .card--feed .card__body {
   flex: 1;
   height: 900px;
-  padding: 56px;
+  padding: 40px;
 }
 .card--feed .card__list-title {
   font-size: 22px;
@@ -528,13 +528,13 @@ video.card__hero-img {
   margin-bottom: -10px;
 }
 .card--feed .card__quote-lines {
-  font-size: 2.85rem;
-}
-.card--feed .card__quote-lines[data-size="medium"] {
   font-size: 2.5rem;
 }
+.card--feed .card__quote-lines[data-size="medium"] {
+  font-size: 2.1rem;
+}
 .card--feed .card__quote-lines[data-size="long"] {
-  font-size: 1.8rem;
+  font-size: 1.6rem;
 }
 .card--feed .card__quote-cite {
   font-size: 22px;

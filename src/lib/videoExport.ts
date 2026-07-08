@@ -547,8 +547,9 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
   source.disconnect()
   source.connect(dest)
   const audioTrack = dest.stream.getAudioTracks()[0]
-  const audioSampleRate = ctx.sampleRate
-  const audioChannels = 2
+  const trackSettings = audioTrack.getSettings()
+  const audioSampleRate = trackSettings.sampleRate || ctx.sampleRate
+  const audioChannels = trackSettings.channelCount || 2
 
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
@@ -577,8 +578,21 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
     // 'avc' → decoderConfig carries the avcC box the muxer needs.
     avc: { format: 'avc' },
   })
+  let currentAudioTimestamp = 0
   const audioEncoder = new AudioEncoder({
-    output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+    output: (chunk, meta) => {
+      const duration = chunk.duration ?? 0
+      const data = new ArrayBuffer(chunk.byteLength)
+      chunk.copyTo(data)
+      const newChunk = new EncodedAudioChunk({
+        type: chunk.type,
+        timestamp: currentAudioTimestamp,
+        duration: duration,
+        data: data,
+      })
+      currentAudioTimestamp += duration
+      muxer.addAudioChunk(newChunk, meta)
+    },
     error: onEncErr,
   })
   audioEncoder.configure({
