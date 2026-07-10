@@ -122,7 +122,6 @@ export default function App() {
 
   // Video-hero state
   const [videoUrl, setVideoUrl] = useState('')
-  const [videoName, setVideoName] = useState('')
   const [videoDur, setVideoDur] = useState(0)
   const [clipStart, setClipStart] = useState(0)
   const [clipLen, setClipLen] = useState(MAX_CLIP)
@@ -569,7 +568,6 @@ export default function App() {
     if (videoUrl) URL.revokeObjectURL(videoUrl)
     const url = URL.createObjectURL(file)
     setVideoUrl(url)
-    setVideoName(file.name)
     setClipStart(0)
     const probe = document.createElement('video')
     probe.preload = 'metadata'
@@ -598,7 +596,6 @@ export default function App() {
   function removeVideo() {
     if (videoUrl) URL.revokeObjectURL(videoUrl)
     setVideoUrl('')
-    setVideoName('')
     setVideoDur(0)
     setClipStart(0)
     setClipLen(MAX_CLIP)
