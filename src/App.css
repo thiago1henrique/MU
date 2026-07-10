@@ -146,12 +146,13 @@
   font-weight: 600;
   cursor: pointer;
   padding: 12px 18px;
-  border-radius: 7px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-h);
   transition: border-color 0.15s, background 0.15s, transform 0.05s;
   max-width: 9.75rem;
+
 }
 .btn:hover:not(:disabled) {
   border-color: var(--accent);
