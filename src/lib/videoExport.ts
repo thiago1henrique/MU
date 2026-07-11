@@ -9,12 +9,14 @@
 // body sits over the background.
 //
 // Two encoders:
-//   • WebCodecs (Chromium): the clip plays once in real time while we composite
-//     each frame and feed it to a hardware H.264 VideoEncoder; its audio is
-//     tapped through the WebAudio graph into an AAC AudioEncoder. Both streams
-//     mux straight to MP4 with mp4-muxer — no ffmpeg transcode (that transcode,
-//     single-threaded WASM, was the slow "Convertendo…" step). This is the fast
-//     path: capture ≈ clip length, then an instant mux.
+//   • WebCodecs (Chromium): the target path. Runs in two real-time passes to
+//     keep the CPU free during each. Pass 1 plays the clip and taps its audio
+//     through the WebAudio graph into an AAC AudioEncoder. Pass 2 replays the
+//     clip and composites each presented frame into a hardware H.264
+//     VideoEncoder. Both streams mux straight to MP4 with mp4-muxer — no ffmpeg
+//     transcode (that transcode, single-threaded WASM, was the slow
+//     "Convertendo…" step). Splitting audio from video means neither pass ever
+//     starves the other, so the video never drops/duplicates frames.
 //   • Legacy fallback (Safari/older Firefox): MediaRecorder + ffmpeg.wasm.
 
 import { toPng } from 'html-to-image'
@@ -747,39 +749,79 @@ async function exportViaWebCodecs(opts: VideoExportOpts): Promise<Blob> {
     }
   }
 
-  // ---- PHASE 2: VIDEO OFFLINE CAPTURE ----
-  // We seek the video frame-by-frame and composite + encode each frame.
-  // This runs as fast or as slow as the CPU can handle, guaranteeing 100% smooth video.
+  // ---- PHASE 2: VIDEO REAL-TIME CAPTURE ----
+  // The previous approach seeked the element frame-by-frame — hundreds of
+  // blocking seeks (much slower than real time), and its 150ms stale-frame
+  // backstop encoded duplicate frames whenever a seek ran long, which is what
+  // made the exported clip judder. Instead we play the clip once in real time
+  // and composite whatever frame the browser is actually presenting. Audio is
+  // already captured (Phase 1), so the CPU here only composites + H.264-encodes,
+  // which Chrome's hardware encoder handles comfortably at 30fps. Output frames
+  // are emitted on a fixed 30fps wall clock (CFR) so players never judder.
   onStatus?.('Gravando vídeo… 0%')
 
+  // Rewind to the segment start (Phase 1 left the playhead mid-clip) and play.
+  video.muted = true
+  video.playbackRate = 1.0
+  await seekTo(video, start)
+
+  // Loop the segment if the clip is shorter than the requested duration.
+  const onVideoLoopEnded = () => {
+    try {
+      video.currentTime = start
+    } catch {
+      /* not seekable yet */
+    }
+    void video.play().catch(() => {})
+  }
+  video.addEventListener('ended', onVideoLoopEnded)
+  await video.play()
+
+  const frameDurMs = 1000 / FPS
+  const captureStart = performance.now()
+  // A keyframe every 2s keeps the file scrubbable and broadly decodable
+  // (WhatsApp/Instagram) instead of relying on a single leading keyframe.
+  const keyframeInterval = FPS * 2
+
   for (let outIdx = 0; outIdx < totalFrames; outIdx++) {
-    const elapsed = outIdx / FPS
-    
-    // Calculate the playhead position for this frame (including looping)
-    const mediaTime = start + (elapsed % clipLen)
+    // Pace each output frame to the wall clock so the frame the browser is
+    // presenting lines up with this frame's position in the clip. If
+    // compositing falls behind real time we simply don't wait — the presented
+    // frame is still the correct real-time position, so the timeline stays
+    // consistent (we never seek, so there are no stale duplicates).
+    const targetMs = captureStart + outIdx * frameDurMs
+    for (let waitMs = targetMs - performance.now(); waitMs > 0; waitMs = targetMs - performance.now()) {
+      await new Promise((r) => setTimeout(r, waitMs))
+    }
 
-    // Seek the video to the precise mediaTime for this frame
-    await seekTo(video, mediaTime)
+    // If the segment ended between frames, make sure playback resumes so we
+    // never composite a frozen last frame while the loop-seek is pending.
+    if (video.paused && !video.seeking) void video.play().catch(() => {})
 
-    // Composite the frame onto canvas using linear, continuous time
-    composite(start + elapsed)
+    // Composite using linear, continuous song time (the lyric/animation layers
+    // advance with the output timeline, independent of the video's own loop).
+    composite(start + outIdx / FPS)
 
-    // Encode the frame
     const frame = new VideoFrame(canvas, {
       timestamp: Math.round(outIdx * frameDurUs),
       duration: Math.round(frameDurUs),
     })
-    videoEncoder.encode(frame, { keyFrame: outIdx === 0 })
+    videoEncoder.encode(frame, { keyFrame: outIdx % keyframeInterval === 0 })
     frame.close()
 
-    // Handle backpressure
+    // Handle encoder backpressure.
     while (videoEncoder.encodeQueueSize > 8) {
       await new Promise((r) => setTimeout(r, 0))
     }
 
-    const pct = Math.min(100, Math.round((outIdx / totalFrames) * 100))
-    onStatus?.(`Gravando vídeo… ${pct}%`)
+    if (outIdx % 5 === 0 || outIdx === totalFrames - 1) {
+      const pct = Math.min(100, Math.round((outIdx / totalFrames) * 100))
+      onStatus?.(`Gravando vídeo… ${pct}%`)
+    }
   }
+
+  video.pause()
+  video.removeEventListener('ended', onVideoLoopEnded)
 
   if (encoderError) {
     videoEncoder.close()
