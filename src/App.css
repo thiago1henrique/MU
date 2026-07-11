@@ -521,6 +521,12 @@
   color: #fff;
   filter: brightness(1.35);
 }
+/* Plain utility action, deliberately unbranded so it doesn't compete with the
+   two platform buttons above it — an outline, not a fill. */
+.btn--download {
+  background: transparent;
+}
+
 /* While exporting, the clicked button shows its progress inline: a brighter
    fill grows left→right to --progress, over the brand background. Text stays
    legible on top (it's just a background layer). Each brand keeps its own
@@ -573,6 +579,25 @@
   background-repeat: no-repeat;
   animation: btn-shimmer 1.1s linear infinite;
 }
+/* .btn--download has no fill to layer a white highlight over, so it shimmers
+   with the accent tint instead (same one .input:focus's ring uses). */
+.btn--download.is-exporting {
+  cursor: progress;
+}
+.btn--download.is-exporting:disabled {
+  opacity: 1;
+}
+.btn--download.is-exporting.is-indeterminate {
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--accent-bg) 50%,
+    transparent 80%
+  );
+  background-size: 45% 100%;
+  background-repeat: no-repeat;
+  animation: btn-shimmer 1.1s linear infinite;
+}
 @keyframes btn-shimmer {
   from {
     background-position: -45% 0;
@@ -584,7 +609,8 @@
 @media (prefers-reduced-motion: reduce) {
   .btn--primary.is-exporting.is-indeterminate,
   .btn--instagram.is-exporting.is-indeterminate,
-  .btn--x.is-exporting.is-indeterminate {
+  .btn--x.is-exporting.is-indeterminate,
+  .btn--download.is-exporting.is-indeterminate {
     animation: none;
   }
 }

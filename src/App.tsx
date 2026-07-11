@@ -602,14 +602,18 @@ export default function App() {
   }
 
   // ---- Custom cover helpers ----
+  // Baked straight into a data URL (not URL.createObjectURL) — html-to-image's
+  // cacheBust option appends a "?<timestamp>" to every non-data image URL it
+  // re-fetches for export, which turns a blob: URL into an invalid one and
+  // breaks the export. Data URLs are recognized and embedded as-is instead.
   function onCoverFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    if (customCoverUrl) URL.revokeObjectURL(customCoverUrl)
-    setCustomCoverUrl(URL.createObjectURL(file))
+    const reader = new FileReader()
+    reader.onload = () => setCustomCoverUrl(reader.result as string)
+    reader.readAsDataURL(file)
   }
   function removeCustomCover() {
-    if (customCoverUrl) URL.revokeObjectURL(customCoverUrl)
     setCustomCoverUrl('')
   }
 
@@ -670,13 +674,15 @@ export default function App() {
 
   /**
    * Always downloads the still image, regardless of a loaded video clip. Used
-   * as the share-flow's fallback, keyed by `kind` so it lines up with
-   * whichever brand button triggered it.
+   * both as the share-flow's fallback (keyed by `kind`, so it lines up with
+   * whichever brand button triggered it) and by the plain "baixar foto" button
+   * (keyed by its own 'photo' id, so it doesn't light up a brand button that
+   * the user never clicked).
    */
-  async function handlePngExport(kind: 'story' | 'feed') {
+  async function handlePngExport(kind: 'story' | 'feed', exportingKey: string = kind) {
     const node = kind === 'story' ? storyRef.current : feedRef.current
     if (!node || !showCard) return
-    setExporting(kind)
+    setExporting(exportingKey)
     setVstatus('Gerando imagem…')
     try {
       const blob = await nodeToPngBlob(node)
@@ -831,6 +837,16 @@ export default function App() {
           : undefined,
     }
   }
+  // The plain "baixar foto" button is keyed by its own id (not 'story'/'feed')
+  // so it never lights up a brand button the user didn't click.
+  const dlActive = exporting === 'photo'
+  const dlBtnProps = {
+    className:
+      'btn btn--download' + (dlActive ? ' is-exporting' : '') + (dlActive && !exportPct ? ' is-indeterminate' : ''),
+    disabled: !!exporting,
+    style: dlActive && exportPct ? ({ '--progress': `${exportPct}%` } as CSSProperties) : undefined,
+  }
+
   return (
     <>
     <div className="app" data-source={source}>
@@ -1161,6 +1177,17 @@ export default function App() {
                 <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
               </svg>
               {exporting === 'feed' ? exportLabel : 'Feed'}
+            </button>
+            <button
+              {...dlBtnProps}
+              onClick={() => handlePngExport(previewFmt, 'photo')}
+              title={`Baixar o recap em ${previewFmt === 'story' ? 'Story' : 'Feed'} (${previewFmt === 'story' ? '1080×1920' : '1600×900'}), sem tentar compartilhar.`}
+            >
+              <svg className="btn__brand-mark" viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3v12m0 0-4-4m4 4 4-4" />
+                <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+              </svg>
+              {dlActive ? exportLabel : `Baixar recap · ${previewFmt === 'story' ? 'Story' : 'Feed'}`}
             </button>
           </div>
           {videoUrl && !IS_FIREFOX && (
