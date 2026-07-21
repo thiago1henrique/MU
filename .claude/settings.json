@@ -34,7 +34,9 @@
       "PowerShell(pnpm exec eslint src/App.tsx src/index.css 2>&1)",
       "Bash(git status *)",
       "Bash(pnpm test *)",
-      "Bash(pnpm lint *)"
+      "Bash(pnpm lint *)",
+      "Bash(git log *)",
+      "Bash(VERCEL_GIT_COMMIT_SHA=abcdef1234567890 pnpm build)"
     ],
     "additionalDirectories": [
       "C:\\Users\\thiag\\AppData\\Local\\Temp\\claude\\d--Dev-Pessoal-Echo\\82dd5f53-108c-410b-9283-f0e28462d9cf\\scratchpad"

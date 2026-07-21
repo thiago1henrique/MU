@@ -1,6 +1,29 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineConfig, loadEnv } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+
+// public/sw.js is copied to dist as-is (Vite doesn't process publicDir files),
+// so its CACHE name never changes between deploys — the browser only detects
+// a new service worker when sw.js's bytes differ, so an unversioned name means
+// the SW (and whatever it cached) never updates, and stale artist photos/covers
+// stick around until the user manually clears site data. Stamping the build's
+// commit SHA into CACHE here makes every deploy ship a byte-different sw.js,
+// so the browser installs it and the existing activate handler's cache
+// cleanup (already coded in sw.js) actually gets a chance to run.
+function versionServiceWorker(): Plugin {
+  return {
+    name: 'version-service-worker',
+    apply: 'build',
+    closeBundle() {
+      const buildId = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) ?? String(Date.now())
+      const swPath = join(process.cwd(), 'dist', 'sw.js')
+      const contents = readFileSync(swPath, 'utf-8')
+      writeFileSync(swPath, contents.replace('echo-shell-v1', `echo-shell-${buildId}`))
+    },
+  }
+}
 
 // Serves our /api/* serverless functions during `vite dev`. In production
 // Vercel runs api/*.ts for us, but plain `vite dev` doesn't — without this
@@ -66,7 +89,7 @@ function apiDev(env: Record<string, string>): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    plugins: [react(), apiDev(env)],
+    plugins: [react(), apiDev(env), versionServiceWorker()],
     // Pin host+port so the dev URL always matches the Spotify Redirect URI
     // (http://127.0.0.1:5173/). strictPort fails loudly instead of silently
     // switching to 5174 if 5173 is taken. 127.0.0.1 (not localhost) because

@@ -13,15 +13,6 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-// Limpa o cache (Cache Storage) no reload para evitar problemas de capas e fotos desatualizadas pós-deploy
-if ('caches' in window) {
-  caches.keys().then((keys) => {
-    return Promise.all(keys.map((key) => caches.delete(key)))
-  }).catch((err) => {
-    console.error('Falha ao limpar caches no reload:', err)
-  })
-}
-
 // Registra o service worker (PWA). Só em produção — em dev o SW atrapalha o HMR.
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
